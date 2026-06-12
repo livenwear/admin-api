@@ -1,0 +1,12 @@
+http://localhost:3013/api/v1/admin/product-categories
+{
+  "title": "Electronics",
+  "description": "Category for electronic products like phones and laptops",
+  "primaryImageUrl": "https://example.com/images/electronics.jpg",
+  "parentCategoryUuid": "550e8400-e29b-41d4-a716-446655440000",
+  "metaTitle": "Electronics Category",
+  "metaDescription": "Explore our range of electronic products",
+  "metaKeywords": "electronics, gadgets, technology",
+  "displayOrder": 1,
+  "isActive": true
+}
