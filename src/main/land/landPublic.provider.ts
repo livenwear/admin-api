@@ -1,4 +1,4 @@
-import { ProductCategory } from 'src/database/entities/product/product-category.entity';
+import { ProductCategory } from '@liven/entities';
 
 export class LandPublicProvider {
   static categoryListItem(category: ProductCategory) {

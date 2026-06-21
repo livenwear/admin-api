@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ProductCategory } from 'src/database/entities/product/product-category.entity';
+import { ProductCategory } from '@liven/entities';
 import { LandPublicService } from './landPublic.service';
 import { LandPublicController } from './landPublic.controller';
 @Module({

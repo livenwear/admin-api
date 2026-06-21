@@ -5,7 +5,7 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthService } from '../auth.service';
 import { ROLES_KEY } from './roles.decorator';
 import { UserRole } from 'src/common/type';
-import { User } from 'src/database/entities/user/user.entity';
+import { User } from '@liven/entities';
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
   constructor(

@@ -1,4 +1,4 @@
-import { Blog } from 'src/database/entities/blog/blog.entity';
+import { Blog } from '@liven/entities';
 import { CreateSingleBlogDto, FetchAllBlogsDto } from './dto';
 
 export class BlogAdminProvider {

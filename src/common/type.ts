@@ -1,10 +1,7 @@
-export enum UserRole {
-    ADMIN = 'admin',
-    USER = 'user',
-    VENDOR = 'vendor',
-  }
-  export interface JwtPayload {
-    sub: number;
-    email: string;
-    role: string;
-  }
+export { UserRole } from '@liven/entities';
+
+export interface JwtPayload {
+  sub: number;
+  email: string;
+  role: string;
+}

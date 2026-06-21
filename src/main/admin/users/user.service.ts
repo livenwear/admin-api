@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 
 import { CreateUserDto, GetUsersDto, UpdateUserDto } from './dto/user.dto';
 import * as bcrypt from 'bcrypt';
-import { User } from 'src/database/entities/user/user.entity';
+import { User } from '@liven/entities';
 import { hashPassword } from 'src/common/hashPassword';
 import { UserRole } from 'src/common/type';
 

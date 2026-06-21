@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, HttpException, Http
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, In } from 'typeorm';
 import { SlugService } from 'src/common/slug.service';
-import { ProductCategory } from 'src/database/entities/product/product-category.entity';
+import { ProductCategory } from '@liven/entities';
 import { CreateProductCategoryDto, UpdateProductCategoryDto, ProductCategoryQueryDto, BaseResponseDto } from './dto';
 
 @Injectable()

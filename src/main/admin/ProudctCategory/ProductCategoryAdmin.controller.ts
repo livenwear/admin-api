@@ -3,7 +3,7 @@ import { Roles } from 'src/main/auth/strategies/roles.decorator';
 import { UserRole } from 'src/common/type';
 import { JwtAuthGuard } from 'src/main/auth/strategies/jwt.strategy';
 import { CreateProductCategoryDto, UpdateProductCategoryDto, ProductCategoryQueryDto, BaseResponseDto } from './dto';
-import { ProductCategory } from 'src/database/entities/product/product-category.entity';
+import { ProductCategory } from '@liven/entities';
 import { ProductCategoryAdminService } from './ProductCategoryAdminService.service';
 
 @Controller('/product-categories')

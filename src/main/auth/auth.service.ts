@@ -5,7 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { authenticator } from 'otplib';
 import { SignInDto, SignUpDto, TwoFactorDto, EnableTwoFactorDto } from './dto/auth.dto';
-import { User } from 'src/database/entities/user/user.entity';
+import { User } from '@liven/entities';
 import { Response } from 'express';
 import { CustomErrorException } from 'src/exceptions/custom-error-exception';
 import { ErrorHandler } from 'src/utils/error-handler';

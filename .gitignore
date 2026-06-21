@@ -1,6 +1,15 @@
 # compiled output
 /dist
-/node_modules
+
+# ignore all node_modules
+/node_modules/*
+
+# allow this scope
+!/node_modules/@liven
+
+# allow its contents
+!/node_modules/@liven/**
+
 /build
 
 # Logs

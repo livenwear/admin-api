@@ -2,11 +2,7 @@ import { Injectable, InternalServerErrorException, NotFoundException, BadRequest
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SlugService } from 'src/common/slug.service';
-import { ProductAttributeValue } from 'src/database/entities/product/product-attribute-value.entity';
-import { ProductAttribute } from 'src/database/entities/product/product-attribute.entity';
-import { ProductCategory } from 'src/database/entities/product/product-category.entity';
-import { Product } from 'src/database/entities/product/product.entity';
-import { Tag } from 'src/database/entities/product/tag.entity';
+import { ProductAttributeValue, ProductAttribute, ProductCategory, Product, ProductTag } from '@liven/entities';
 import { CreateProductAdminDto, GetProductsAdminDto } from './dto';
 @Injectable()
 export class ProductAdminService {
