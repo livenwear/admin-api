@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import cookieParser from 'cookie-parser';
+import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { CustomExceptionFilter } from './filters/custom-exception.filter';
@@ -7,29 +7,43 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.use(cookieParser());
   app.useGlobalFilters(new CustomExceptionFilter());
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
 
   const configService = app.get(ConfigService);
-
   app.setGlobalPrefix('api/v1');
 
   app.enableCors({
-    origin: configService.get<string>('CORS_ORIGIN') || 'http://localhost:3000',
+    origin: (
+      configService.get<string>('CORS_ORIGIN') || 'http://localhost:5173'
+    )
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
     methods:
       configService.get<string>('CORS_METHODS') ||
       'GET,HEAD,PUT,PATCH,POST,DELETE',
     allowedHeaders:
       configService.get<string>('CORS_HEADERS') ||
-      'Content-Type,Authorization',
+      'Content-Type,Authorization,X-Guest-Cart-Token',
     credentials: true,
   });
 
   const config = new DocumentBuilder()
-    .setTitle('Auth API')
-    .setDescription('Authentication API documentation')
+    .setTitle('Liven API')
+    .setDescription(
+      'Liven clothing store API — public / customer panel / admin',
+    )
     .setVersion('1.0')
-    .addTag('auth')
+    .addTag('admin-auth')
+    .addTag('customer-auth')
+    .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
@@ -38,8 +52,7 @@ async function bootstrap() {
   const port = configService.get<number>('PORT') || 3000;
   await app.listen(port);
   console.log(`Server is running on http://localhost:${port}`);
+  console.log(`Swagger: http://localhost:${port}/api`);
 }
 
 bootstrap();
-
-

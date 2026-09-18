@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ALL_ENTITIES } from '@liven/entities';
+import { ALL_ENTITIES } from 'src/entities';
 
 @Module({
   // imports: [
@@ -10,28 +10,15 @@ import { ALL_ENTITIES } from '@liven/entities';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get('DATABASE_HOST'),
-        port: configService.get('DATABASE_PORT'),
-        username: configService.get('DATABASE_USER'),
-        password: configService.get('DATABASE_PASSWORD'),
-        database: configService.get('DATABASE_DB'),
+        type: 'postgres' as const,
+        host: configService.get<string>('DATABASE_HOST', 'localhost'),
+        port: Number(configService.get<string>('DATABASE_PORT', '5432')),
+        username: configService.get<string>('DATABASE_USER', 'postgres'),
+        password: configService.get<string>('DATABASE_PASSWORD', '1234'),
+        database: configService.get<string>('DATABASE_DB', 'liven'),
         entities: [...ALL_ENTITIES],
-     
-
         synchronize: true,
-        migrationsRun:true,
-        logging: false, 
-        extra: {
-          charset: 'utf8mb4_unicode_ci', 
-          timeZone: 'Asia/Tehran',
-        },
-        options: {
-          trustedConnection: true,
-          encrypt: true,
-          enableArithAbort: true,
-          trustServerCertificate: true,
-        },
+        logging: false,
       }),
     }),
   ],

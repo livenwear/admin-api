@@ -1,23 +1,31 @@
-import { Injectable, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  ExecutionContext,
+  UnauthorizedException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from '../auth.service';
 import { ROLES_KEY } from './roles.decorator';
-import { UserRole } from 'src/common/type';
-import { User } from '@liven/entities';
+import { RoleSlug, UserRole } from 'src/common/type';
+
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
   constructor(
     private reflector: Reflector,
     private jwtService: JwtService,
-    private authService: AuthService, // ✅ Inject AuthService instead of UserRepository
+    private authService: AuthService,
   ) {
     super();
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredRoles = this.reflector.get<UserRole[]>(ROLES_KEY, context.getHandler());
+    const requiredRoles = this.reflector.get<UserRole[]>(
+      ROLES_KEY,
+      context.getHandler(),
+    );
     const request = context.switchToHttp().getRequest();
     const token = this.getTokenFromCookie(request);
 
@@ -26,37 +34,38 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     }
 
     try {
-      // Verifying the JWT token
       const decoded: any = this.jwtService.verify(token);
-console.log("decoded => ",decoded)
-      // Fetch user information from the AuthService
       const user = await this.authService.getUserById(decoded.userUuid);
 
       if (!user) {
-        throw new UnauthorizedException('User not found with the provided token.');
-      }
-      console.log("requiredRoles", requiredRoles)
-      console.log("requiredRoles", user)
-
-      // Check if the user has the required roles to access the route
-      if (requiredRoles && requiredRoles.length > 0 && !requiredRoles.includes(user.role)) {
-        throw new ForbiddenException('Access denied: User does not have the required role.');
+        throw new UnauthorizedException(
+          'User not found with the provided token.',
+        );
       }
 
-      // Attach the user information to the request object for further processing in the route handlers
+      const roleSlugs =
+        user.userRoles?.map((ur) => ur.role?.slug).filter(Boolean) ?? [];
+
+      if (
+        requiredRoles &&
+        requiredRoles.length > 0 &&
+        !roleSlugs.includes(RoleSlug.SUPER_ADMIN) &&
+        !requiredRoles.some((role) => roleSlugs.includes(role))
+      ) {
+        throw new ForbiddenException(
+          'Access denied: User does not have the required role.',
+        );
+      }
+
       request.user = user;
-
       return true;
     } catch (error) {
-      console.error('JWT verification failed:', error.message);
-
       if (error instanceof UnauthorizedException) {
-        throw new UnauthorizedException(error.message);
+        throw error;
       }
       if (error instanceof ForbiddenException) {
-        throw new ForbiddenException(error.message);
+        throw error;
       }
-
       throw new UnauthorizedException('Invalid or expired token.');
     }
   }

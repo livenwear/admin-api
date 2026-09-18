@@ -1,51 +1,53 @@
-
-
-
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConfigModule, ConfigService } from '@nestjs/config'; // Import ConfigService
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DatabaseModule } from './database/database.module';
-import { UserAdminModule } from './main/admin/users/user.module';
-import { ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler'; // Import ThrottlerModuleOptions
+import { SeedModule } from './database/seed.module';
+import { ThrottlerModule, ThrottlerModuleOptions, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard } from '@nestjs/throttler';
-import { AuthModule } from './main/auth/auth.module';
-import { JwtAuthGuard } from './main/auth/strategies/jwt.strategy';
-// import { BlogAdminModule } from './main/admin/blog/blog.module';
-import { ProductCategoryAdminModule } from './main/admin/ProudctCategory/ProductCategoryAdmin.module';
-import { LandPublicModule } from './main/land/landPublic.module';
-import { ProductAdminModule } from './main/admin/product/product.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { CustomerModule } from './modules/customer/customer.module';
+import { PublicModule } from './modules/public/public.module';
+import { StorageModule } from './storage/storage.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { OrdersModule } from './modules/orders/orders.module';
 
 @Module({
   imports: [
-    
     ConfigModule.forRoot({
-      isGlobal: true, 
-      envFilePath: '.env',  // Load from the .env file
+      isGlobal: true,
+      envFilePath: '.env',
     }),
     ThrottlerModule.forRootAsync({
-      imports: [ConfigModule],  // Make ConfigModule available to this module
-      useFactory: async (configService: ConfigService): Promise<ThrottlerModuleOptions> => ([{
-        ttl: Number(configService.get<string>('THROTTLE_TTL', '6000')),  // Ensure TTL is a number, default 6000
-        limit: Number(configService.get<string>('THROTTLE_LIMIT', '10')),      }]),
-      inject: [ConfigService],  // Inject ConfigService into the factory function
+      imports: [ConfigModule],
+      useFactory: async (
+        configService: ConfigService,
+      ): Promise<ThrottlerModuleOptions> => [
+        {
+          ttl: Number(configService.get<string>('THROTTLE_TTL', '6000')),
+          limit: Number(configService.get<string>('THROTTLE_LIMIT', '10')),
+        },
+      ],
+      inject: [ConfigService],
     }),
-    AuthModule,
     DatabaseModule,
-    UserAdminModule,
-    // BlogAdminModule,
-    ProductAdminModule, 
-    LandPublicModule,
-    ProductCategoryAdminModule
+    SeedModule,
+    StorageModule,
+    AuthModule,
+    AdminModule,
+    CustomerModule,
+    PublicModule,
+    ChatModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
-   
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,  // Use ThrottlerGuard globally
+      useClass: ThrottlerGuard,
     },
   ],
 })

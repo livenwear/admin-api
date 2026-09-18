@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ProductCategory } from '@liven/entities';
+import { ProductCategory } from 'src/entities';
 import { LandPublicProvider } from './landPublic.provider';
 
 @Injectable()

@@ -4,7 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductCategoryAdminService } from './ProductCategoryAdminService.service';
 import { ProductCategoryAdminController } from './ProductCategoryAdmin.controller';
 import { AuthModule } from 'src/main/auth/auth.module';
-import { User, ProductCategory } from '@liven/entities';
+import { User, ProductCategory } from 'src/entities';
 import { SlugService } from 'src/common/slug.service';
 
 @Module({

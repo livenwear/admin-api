@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductAdminService } from './product.service';
 import { ProductAdminController } from './product.controller';
 import { AuthModule } from 'src/main/auth/auth.module';
-import { User, Product } from '@liven/entities';
+import { User, Product } from 'src/entities';
 import { SlugService } from 'src/common/slug.service';
 
 @Module({

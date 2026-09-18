@@ -5,7 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { authenticator } from 'otplib';
 import { SignInDto, SignUpDto, TwoFactorDto, EnableTwoFactorDto } from './dto/auth.dto';
-import { User } from '@liven/entities';
+import { User } from 'src/entities';
 import { Response } from 'express';
 import { CustomErrorException } from 'src/exceptions/custom-error-exception';
 import { ErrorHandler } from 'src/utils/error-handler';
@@ -113,7 +113,10 @@ export class AuthService {
 
 
   async getUserById(userUuid: string): Promise<User | null> {
-    return this.userRepository.findOne({ where: { uuid: userUuid } });
+    return this.userRepository.findOne({
+      where: { uuid: userUuid },
+      relations: ['userRoles', 'userRoles.role'],
+    });
   }
 
 

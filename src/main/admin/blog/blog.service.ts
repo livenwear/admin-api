@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { SlugService } from 'src/common/slug.service';
 import { BlogStatus } from 'src/constant';
-import { User, Blog, ProductCategory, BlogTag } from '@liven/entities';
+import { User, Blog, ProductCategory, BlogTag } from 'src/entities';
 import { BlogAdminProvider } from './blog.provider';
 import { FetchAllBlogsDto } from './dto/fetch-all-blogs.dto';
 import { AddCategoryDto, CreateBlogDto, CreateBlogResponseDto, CreateSingleBlogDto, GetBlogsQueryDto, GetBlogsResponseDto, RemoveCategoryDto, UpdateBlogDto, UpdateBlogResponseDto } from './dto';

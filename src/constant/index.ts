@@ -1,1 +1,1 @@
-export { BlogStatus } from '@liven/entities';
+export { PostStatus } from 'src/entities';

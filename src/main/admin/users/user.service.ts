@@ -1,120 +1,139 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-
 import { CreateUserDto, GetUsersDto, UpdateUserDto } from './dto/user.dto';
-import * as bcrypt from 'bcrypt';
-import { User } from '@liven/entities';
+import { Role, User, UserRole, UserRoleEntity } from 'src/entities';
 import { hashPassword } from 'src/common/hashPassword';
-import { UserRole } from 'src/common/type';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Role)
+    private readonly roleRepository: Repository<Role>,
+    @InjectRepository(UserRoleEntity)
+    private readonly userRoleRepository: Repository<UserRoleEntity>,
   ) {}
 
   async createUser(createUserDto: CreateUserDto): Promise<User> {
     try {
-    
       const { password, firstName, lastName, email, role } = createUserDto;
-      
       const hashedPassword = await hashPassword(password);
-    
-      const user = this.userRepository.create({
-        firstName,
-        lastName,
-        email,
-        password: hashedPassword,
-        role: role || UserRole.USER, 
+
+      const user = await this.userRepository.save(
+        this.userRepository.create({
+          firstName,
+          lastName,
+          email,
+          password: hashedPassword,
+        }),
+      );
+
+      const roleSlug = role || UserRole.USER;
+      const roleEntity = await this.roleRepository.findOne({
+        where: { slug: roleSlug },
       });
-    
-      const savedUser = await this.userRepository.save(user);
-      return savedUser;
-    
+      if (roleEntity) {
+        await this.userRoleRepository.save(
+          this.userRoleRepository.create({ user, role: roleEntity }),
+        );
+      }
+
+      return this.getUserById(user.id);
     } catch (error) {
-  
       throw new Error(`Failed to create user: ${error.message}`);
     }
   }
-  
 
-
-async getAllUsers(query: GetUsersDto): Promise<{
-  data: User[];
-  meta: {
-    totalItems: number;
-    totalPages: number;
-    currentPage: number;
-    itemsPerPage: number;
-    allItems: number; 
-  };
-}> {
-  try {
-    const {
-      firstName,
-      lastName,
-      email,
-      role,
-      isVerified,
-      isActive,
-      twoFactorEnabled,
-      phone,
-      page = '1',
-      limit = '10',
-      sortBy = 'createdAt',
-      sortOrder = 'DESC',
-    } = query;
-
-    const where: any = {};
-
-    if (firstName) where.firstName = firstName;
-    if (lastName) where.lastName = lastName;
-    if (email) where.email = email;
-    if (role) where.role = role;
-    if (isVerified !== undefined) where.isVerified = isVerified === 'true';
-    if (isActive !== undefined) where.isActive = isActive === 'true';
-    if (twoFactorEnabled !== undefined) where.twoFactorEnabled = twoFactorEnabled === 'true';
-    if (phone) where.phone = phone;
-
-    const take = parseInt(limit, 10);
-    const skip = (parseInt(page, 10) - 1) * take;
-
-    // Filtered + paginated users
-    const [users, filteredTotal] = await this.userRepository.findAndCount({
-      where,
-      order: {
-        [sortBy]: sortOrder,
-      },
-      skip,
-      take,
-    });
-
-    // Total users (unfiltered)
-    const totalAllUsers = await this.userRepository.count();
-
-    return {
-      data: users,
-      meta: {
-        totalItems: filteredTotal,
-        totalPages: Math.ceil(filteredTotal / take),
-        currentPage: parseInt(page, 10),
-        itemsPerPage: take,
-        allItems:totalAllUsers, // 👈 include in response
-      },
+  async getAllUsers(query: GetUsersDto): Promise<{
+    data: User[];
+    meta: {
+      totalItems: number;
+      totalPages: number;
+      currentPage: number;
+      itemsPerPage: number;
+      allItems: number;
     };
-  } catch (error) {
-    console.error('UserService.getAllUsers Error:', error);
-    throw new InternalServerErrorException('Error retrieving users');
+  }> {
+    try {
+      const {
+        firstName,
+        lastName,
+        email,
+        role,
+        isVerified,
+        isActive,
+        twoFactorEnabled,
+        phone,
+        page = '1',
+        limit = '10',
+        sortBy = 'createdAt',
+        sortOrder = 'DESC',
+      } = query;
+
+      const qb = this.userRepository
+        .createQueryBuilder('user')
+        .leftJoinAndSelect('user.userRoles', 'userRole')
+        .leftJoinAndSelect('userRole.role', 'role');
+
+      if (firstName) qb.andWhere('user.firstName = :firstName', { firstName });
+      if (lastName) qb.andWhere('user.lastName = :lastName', { lastName });
+      if (email) qb.andWhere('user.email = :email', { email });
+      if (role) qb.andWhere('role.slug = :role', { role });
+      if (isVerified !== undefined) {
+        qb.andWhere('user.isVerified = :isVerified', {
+          isVerified: isVerified === 'true',
+        });
+      }
+      if (isActive !== undefined) {
+        qb.andWhere('user.isActive = :isActive', {
+          isActive: isActive === 'true',
+        });
+      }
+      if (twoFactorEnabled !== undefined) {
+        qb.andWhere('user.twoFactorEnabled = :twoFactorEnabled', {
+          twoFactorEnabled: twoFactorEnabled === 'true',
+        });
+      }
+      if (phone) qb.andWhere('user.phone = :phone', { phone });
+
+      const take = parseInt(limit, 10);
+      const skip = (parseInt(page, 10) - 1) * take;
+
+      qb.orderBy(`user.${sortBy}`, sortOrder as 'ASC' | 'DESC')
+        .skip(skip)
+        .take(take);
+
+      const [users, filteredTotal] = await qb.getManyAndCount();
+      const totalAllUsers = await this.userRepository.count();
+
+      return {
+        data: users,
+        meta: {
+          totalItems: filteredTotal,
+          totalPages: Math.ceil(filteredTotal / take),
+          currentPage: parseInt(page, 10),
+          itemsPerPage: take,
+          allItems: totalAllUsers,
+        },
+      };
+    } catch (error) {
+      console.error('UserService.getAllUsers Error:', error);
+      throw new InternalServerErrorException('Error retrieving users');
+    }
   }
-}
-
-
 
   async getUserById(id: number): Promise<User> {
     try {
-      const user = await this.userRepository.findOne({ where: { id } });
+      const user = await this.userRepository.findOne({
+        where: { id },
+        relations: ['userRoles', 'userRoles.role'],
+      });
 
       if (!user) {
         throw new NotFoundException(`User with ID ${id} not found`);
@@ -122,71 +141,63 @@ async getAllUsers(query: GetUsersDto): Promise<{
 
       return user;
     } catch (error) {
-      console.error(`Error retrieving user with ID ${id}: ${error.message}`);
-
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException(`Error retrieving user with ID ${id}: ${error.message}`);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(
+        `Error retrieving user with ID ${id}: ${error.message}`,
+      );
     }
   }
- 
- 
+
   async updateUser(id: number, updateUserDto: UpdateUserDto): Promise<User> {
     try {
-     
-
-      // Retrieve user by ID using 'findOne' method
       const user = await this.userRepository.findOne({ where: { id } });
-
-      // If user doesn't exist, throw a NotFoundException
       if (!user) {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
 
-      Object.assign(user, updateUserDto);
+      const { role, password, ...rest } = updateUserDto;
+      Object.assign(user, rest);
 
-      if (updateUserDto.password) {
-        user.password = await hashPassword(updateUserDto.password); 
+      if (password) {
+        user.password = await hashPassword(password);
       }
 
-      return await this.userRepository.save(user);
+      await this.userRepository.save(user);
 
+      if (role) {
+        const roleEntity = await this.roleRepository.findOne({
+          where: { slug: role },
+        });
+        if (roleEntity) {
+          await this.userRoleRepository.delete({ userId: user.id });
+          await this.userRoleRepository.save(
+            this.userRoleRepository.create({ user, role: roleEntity }),
+          );
+        }
+      }
+
+      return this.getUserById(user.id);
     } catch (error) {
-      if (!(error instanceof NotFoundException)) {
-        throw new InternalServerErrorException(`Error updating user with ID ${id}: ${error.message}`);
-      }
-
-      throw error;
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(
+        `Error updating user with ID ${id}: ${error.message}`,
+      );
     }
   }
+
   async deleteUser(id: number): Promise<void> {
-    try {
-      const user = await this.getUserById(id);
-      if (!user) {
-        throw new NotFoundException(`User with ID ${id} not found`);
-      }
-  
-      await this.userRepository.softRemove(user);
-    } catch (error) {
-      throw error;
-    }
+    const user = await this.getUserById(id);
+    await this.userRepository.softRemove(user);
   }
 
   async deleteUserHardDelete(id: number): Promise<void> {
-    try {
-      const user = await this.userRepository.findOne({
-        where: { id },
-        withDeleted: true,
-      });
-      if (!user) {
-        throw new NotFoundException(`User with ID ${id} not found`);
-      }
-  
-      await this.userRepository.delete({id:user.id});
-    } catch (error) {
-      throw error;
+    const user = await this.userRepository.findOne({
+      where: { id },
+      withDeleted: true,
+    });
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
     }
+    await this.userRepository.delete({ id: user.id });
   }
 }
