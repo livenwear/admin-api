@@ -1,0 +1,101 @@
+name: Deploy Liven API to VPS
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+env:
+  APP_DIR: /opt/liven-api
+  DEFAULT_VPS_HOST: 185.222.163.237
+  DEFAULT_VPS_USER: root
+  DEFAULT_VPS_PORT: 22
+
+jobs:
+  deploy:
+    environment: vps-secrets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve VPS connection values
+        shell: bash
+        run: |
+          set -e
+          echo "VPS_HOST=${{ secrets.VPS_HOST || env.DEFAULT_VPS_HOST }}" >> "$GITHUB_ENV"
+          echo "VPS_USER=${{ secrets.VPS_USER || env.DEFAULT_VPS_USER }}" >> "$GITHUB_ENV"
+          echo "VPS_PORT=${{ secrets.VPS_PORT || env.DEFAULT_VPS_PORT }}" >> "$GITHUB_ENV"
+
+      - name: Validate required secrets
+        shell: bash
+        env:
+          VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+          API_ENV_FILE: ${{ secrets.API_ENV_FILE }}
+          MINIO_ROOT_USER: ${{ secrets.MINIO_ROOT_USER }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+        run: |
+          set -e
+          required=("VPS_HOST" "VPS_USER" "VPS_PORT")
+          for item in "${required[@]}"; do
+            if [ -z "${!item}" ]; then
+              echo "::error::Missing required deploy config: $item"
+              exit 1
+            fi
+          done
+
+          required_secrets=("VPS_PASSWORD" "API_ENV_FILE" "MINIO_ROOT_USER" "MINIO_ROOT_PASSWORD")
+          for item in "${required_secrets[@]}"; do
+            if [ -z "${!item}" ]; then
+              echo "::error::Missing required secret: $item"
+              exit 1
+            fi
+          done
+
+      - name: Prepare deploy env file
+        shell: bash
+        env:
+          API_ENV_FILE: ${{ secrets.API_ENV_FILE }}
+        run: |
+          set -e
+          printf "%s" "$API_ENV_FILE" > .deploy.env
+          test -s .deploy.env
+
+      - name: Upload project to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ env.VPS_PORT }}
+          source: "."
+          target: "${{ env.APP_DIR }}/repo"
+          rm: true
+
+      - name: Run remote deploy script
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_DIR: ${{ env.APP_DIR }}
+          DEPLOY_BRANCH: ${{ github.ref_name }}
+          MINIO_ROOT_USER: ${{ secrets.MINIO_ROOT_USER }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          PM2_APP_NAME: liven-api
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ env.VPS_PORT }}
+          envs: APP_DIR,DEPLOY_BRANCH,MINIO_ROOT_USER,MINIO_ROOT_PASSWORD,PM2_APP_NAME
+          script_stop: true
+          script: |
+            set -e
+            chmod +x "$APP_DIR/repo/scripts/deploy-vps.sh"
+            bash "$APP_DIR/repo/scripts/deploy-vps.sh"
+
+      - name: Cleanup temporary env file
+        if: always()
+        shell: bash
+        run: rm -f .deploy.env
