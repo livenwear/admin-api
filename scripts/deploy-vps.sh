@@ -272,6 +272,8 @@ deploy_minio() {
   log "Starting/updating Liven MinIO container (ports ${MINIO_HOST_PORT}/${MINIO_CONSOLE_HOST_PORT})"
   mkdir -p /opt/liven-data/minio
   export MINIO_ROOT_USER MINIO_ROOT_PASSWORD
+  # Force a unique Compose project so we never collide with Sumer's .../deploy/ project.
+  export COMPOSE_PROJECT_NAME=liven-minio
   $DOCKER_COMPOSE_CMD -f "$MINIO_COMPOSE_FILE" up -d
 }
 
