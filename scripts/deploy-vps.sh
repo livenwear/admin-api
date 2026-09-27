@@ -266,19 +266,49 @@ normalize_runtime_env() {
   upsert_env "MINIO_CONSOLE_URL" "https://minio-console.livenmode.ir"
 }
 
+minio_container_running() {
+  docker ps --format '{{.Names}}' | grep -Fxq 'liven-minio'
+}
+
+minio_container_exists() {
+  docker ps -a --format '{{.Names}}' | grep -Fxq 'liven-minio'
+}
+
+#
+# Liven MinIO rules (non-negotiable):
+# - NEVER delete /opt/liven-data/minio
+# - NEVER docker rm -v / compose down -v
+# - If container already exists → start it if needed, do NOT recreate
+# - Only create when the name is completely absent
+#
 deploy_minio() {
   if [ -z "${MINIO_ROOT_USER:-}" ] || [ -z "${MINIO_ROOT_PASSWORD:-}" ]; then
     echo "MINIO_ROOT_USER or MINIO_ROOT_PASSWORD secret is missing." >&2
     exit 1
   fi
 
-  log "Starting/updating Liven MinIO container (ports ${MINIO_HOST_PORT}/${MINIO_CONSOLE_HOST_PORT})"
   mkdir -p /opt/liven-data/minio
   export MINIO_ROOT_USER MINIO_ROOT_PASSWORD
-  # Unique project name so we never share Compose state with Sumer's .../deploy/ stack.
-  # Prefer -p (works on docker-compose v1 and docker compose v2); avoid YAML `name:`.
+  export MINIO_SERVER_URL="${MINIO_SERVER_URL:-https://cdn.livenmode.ir}"
   export COMPOSE_PROJECT_NAME=liven-minio
-  $DOCKER_COMPOSE_CMD -p liven-minio -f "$MINIO_COMPOSE_FILE" up -d
+
+  if minio_container_running; then
+    log "liven-minio already running on ports ${MINIO_HOST_PORT}/${MINIO_CONSOLE_HOST_PORT} — leaving container + /opt/liven-data/minio untouched"
+  elif minio_container_exists; then
+    log "liven-minio exists but stopped — starting existing container (data volume preserved, no recreate)"
+    docker start liven-minio >/dev/null
+  else
+    log "No liven-minio container found — creating once (ports ${MINIO_HOST_PORT}/${MINIO_CONSOLE_HOST_PORT}, data=/opt/liven-data/minio)"
+    # --no-recreate: if compose somehow already tracks it, never replace
+    $DOCKER_COMPOSE_CMD -p liven-minio -f "$MINIO_COMPOSE_FILE" up -d --no-recreate
+  fi
+
+  # Soft health probe — do not wipe anything on failure
+  if curl -fsS -o /dev/null "http://127.0.0.1:${MINIO_HOST_PORT}/minio/health/live"; then
+    log "liven-minio health OK on :${MINIO_HOST_PORT}"
+  else
+    log "WARNING: liven-minio health check failed on :${MINIO_HOST_PORT} (container left as-is; data not touched)"
+  fi
 }
 
 build_api() {

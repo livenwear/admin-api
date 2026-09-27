@@ -6,6 +6,11 @@
 #   - data dir: /opt/liven-data/minio
 #   - compose project: always started with `-p liven-minio` (see deploy-vps.sh)
 #
+# SAFETY:
+#   - Deploy must NEVER wipe /opt/liven-data/minio
+#   - Deploy must NEVER `docker compose down -v` / `docker rm -v`
+#   - If container already exists, deploy starts it — does not recreate
+#
 # Do NOT add top-level `name:` — older `docker-compose` v1 on the VPS rejects it
 # with: 'name' does not match any of the regexes: '^x-'
 

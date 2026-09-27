@@ -19,6 +19,12 @@ Deploys on push to `dev` / `main`, or via `workflow_dispatch`.
 | Sumer API (unchanged) | 3001 | `api.sumeracademy.com` |
 | Postgres (shared host) | 5432 | DB name **`liven_prod`** (separate DB) |
 
+### MinIO deploy safety
+
+- Data lives only in **`/opt/liven-data/minio`** (never deleted by deploy).
+- If container `liven-minio` already exists, deploy **starts it** and skips recreate — no name conflict, no data loss.
+- Deploy never runs `docker compose down -v` / `docker rm -v` on Liven MinIO.
+
 ## Required GitHub secrets (`vps-secrets` environment)
 
 - `VPS_PASSWORD`
