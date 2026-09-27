@@ -94,3 +94,27 @@ export class CustomerImpersonateExchangeDto {
   code: string;
 }
 
+export class CustomerForgotPasswordRequestDto {
+  @ApiProperty({ example: '09121234567' })
+  @IsString()
+  @Matches(PHONE_REGEX, { message: 'phone must be a valid Iranian mobile' })
+  phone: string;
+}
+
+export class CustomerForgotPasswordResetDto {
+  @ApiProperty({ example: '09121234567' })
+  @IsString()
+  @Matches(PHONE_REGEX)
+  phone: string;
+
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  @IsNotEmpty()
+  code: string;
+
+  @ApiProperty({ minLength: 6 })
+  @IsString()
+  @MinLength(6)
+  password: string;
+}
+

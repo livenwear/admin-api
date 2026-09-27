@@ -6,4 +6,5 @@ export enum OtpChannel {
 export enum OtpPurpose {
   LOGIN = 'login',
   REGISTER = 'register',
+  RESET_PASSWORD = 'reset_password',
 }

@@ -21,6 +21,8 @@ import {
 import { OtpService } from '../shared/otp.service';
 import { TokenService } from '../shared/token.service';
 import {
+  CustomerForgotPasswordRequestDto,
+  CustomerForgotPasswordResetDto,
   CustomerImpersonateExchangeDto,
   CustomerOtpRequestDto,
   CustomerOtpVerifyDto,
@@ -41,42 +43,65 @@ export class CustomerAuthService {
     private readonly otpService: OtpService,
   ) {}
 
-  async register(
-    dto: CustomerRegisterDto,
-    meta?: { userAgent?: string; ipAddress?: string },
-  ) {
+  /**
+   * Password registration — account stays inactive until SMS OTP is verified.
+   * Does NOT issue tokens; client must call otp/verify next.
+   */
+  async register(dto: CustomerRegisterDto) {
     const existing = await this.userRepository.findOne({
       where: { phone: dto.phone },
+      relations: ['userRoles', 'userRoles.role'],
     });
-    if (existing) {
+
+    if (existing?.isVerified) {
       throw new ConflictException('Phone number already registered.');
     }
 
     const hashed = await bcrypt.hash(dto.password, 10);
-    const user = await this.userRepository.save(
-      this.userRepository.create({
-        phone: dto.phone,
-        password: hashed,
-        firstName: dto.firstName || 'User',
-        lastName: dto.lastName || '',
-        email: null,
-        isActive: true,
-        isVerified: true,
-        twoFactorEnabled: false,
-      }),
+    let user: User;
+
+    if (existing && !existing.isVerified) {
+      // Resume incomplete registration (same phone, never verified)
+      existing.password = hashed;
+      existing.firstName = dto.firstName?.trim() || existing.firstName || 'User';
+      existing.lastName = dto.lastName?.trim() || existing.lastName || '';
+      existing.isActive = false;
+      existing.isVerified = false;
+      user = await this.userRepository.save(existing);
+      if (!existing.userRoles?.length) {
+        await this.assignCustomerRole(user);
+      }
+    } else {
+      user = await this.userRepository.save(
+        this.userRepository.create({
+          phone: dto.phone,
+          password: hashed,
+          firstName: dto.firstName?.trim() || 'User',
+          lastName: dto.lastName?.trim() || '',
+          email: null,
+          isActive: false,
+          isVerified: false,
+          twoFactorEnabled: false,
+        }),
+      );
+      await this.assignCustomerRole(user);
+    }
+
+    const otp = await this.otpService.requestOtp(
+      dto.phone,
+      OtpPurpose.REGISTER,
+      OtpChannel.SMS,
     );
-
-    await this.assignCustomerRole(user);
-
-    const full = await this.loadUser(user.id);
-    const tokens = await this.tokenService.issueTokens(full, 'customer', meta);
 
     return {
       success: true,
-      message: 'Registration successful',
+      message: 'کد تایید ارسال شد. تا تایید شماره، حساب غیرفعال است.',
       data: {
-        user: this.tokenService.toAuthUser(full),
-        ...tokens,
+        needsOtpVerification: true as const,
+        expiresIn: otp.expiresIn,
+        debugNote: otp.debugNote,
+        phone: dto.phone,
+        userUuid: user.uuid,
       },
     };
   }
@@ -92,6 +117,12 @@ export class CustomerAuthService {
 
     if (!user || !user.password) {
       throw new UnauthorizedException('Invalid credentials.');
+    }
+
+    if (!user.isVerified) {
+      throw new ForbiddenException(
+        'شماره موبایل هنوز تایید نشده. ثبت‌نام را با کد پیامک کامل کنید.',
+      );
     }
 
     if (!user.isActive) {
@@ -120,8 +151,8 @@ export class CustomerAuthService {
   }
 
   /**
-   * Unified OTP entry: existing users log in; new phones get an account
-   * immediately (so the code is visible on the admin user detail page).
+   * Unified OTP entry: existing users log in; new phones get a pending account
+   * (inactive until OTP verify) so the code is visible on the admin user page.
    */
   async requestOtp(dto: CustomerOtpRequestDto) {
     let existing = await this.userRepository.findOne({
@@ -138,7 +169,7 @@ export class CustomerAuthService {
           firstName: 'User',
           lastName: '',
           email: null,
-          isActive: true,
+          isActive: false,
           isVerified: false,
           twoFactorEnabled: false,
         }),
@@ -146,16 +177,19 @@ export class CustomerAuthService {
       await this.assignCustomerRole(existing);
       existing = await this.loadUser(existing.id);
       isNewUser = true;
+    } else if (!existing.isActive && existing.isVerified) {
+      // Admin-disabled account
+      throw new ForbiddenException('Account is inactive.');
     } else {
-      if (!existing.isActive) {
-        throw new ForbiddenException('Account is inactive.');
-      }
       this.assertCustomerAudience(existing);
+      isNewUser = !existing.isVerified;
     }
 
     const result = await this.otpService.requestOtp(
       dto.phone,
-      isNewUser ? OtpPurpose.REGISTER : OtpPurpose.LOGIN,
+      isNewUser || !existing.isVerified
+        ? OtpPurpose.REGISTER
+        : OtpPurpose.LOGIN,
       OtpChannel.SMS,
     );
 
@@ -164,7 +198,7 @@ export class CustomerAuthService {
       message: 'OTP sent (stub — check server logs or admin user OTP card)',
       data: {
         ...result,
-        isNewUser,
+        isNewUser: isNewUser || !existing.isVerified,
         userUuid: existing.uuid,
       },
     };
@@ -189,7 +223,6 @@ export class CustomerAuthService {
     });
 
     if (!user) {
-      // Safety net if request-step user creation was skipped somehow
       user = await this.userRepository.save(
         this.userRepository.create({
           phone: dto.phone,
@@ -206,11 +239,13 @@ export class CustomerAuthService {
       user = await this.loadUser(user.id);
     } else {
       this.assertCustomerAudience(user);
-      if (!user.isActive) {
+      // Banned by admin (verified once, then deactivated)
+      if (!user.isActive && user.isVerified) {
         throw new ForbiddenException('Account is inactive.');
       }
       if (dto.firstName?.trim()) user.firstName = dto.firstName.trim();
       if (dto.lastName?.trim()) user.lastName = dto.lastName.trim();
+      user.isActive = true;
       user.isVerified = true;
       user.lastLogin = new Date();
       await this.userRepository.save(user);
@@ -223,6 +258,96 @@ export class CustomerAuthService {
       message: 'OTP verified',
       data: {
         user: this.tokenService.toAuthUser(user),
+        ...tokens,
+      },
+    };
+  }
+
+  /**
+   * Forgot-password step 1: send OTP for any existing account
+   * (active/inactive, verified or pending registration).
+   * Unknown phones still get a generic success (no enumeration).
+   */
+  async forgotPasswordRequest(dto: CustomerForgotPasswordRequestDto) {
+    const ttl = Number(process.env.OTP_EXPIRES_SECONDS || 120);
+    const generic = {
+      success: true,
+      message:
+        'اگر حسابی با این شماره وجود داشته باشد، کد بازیابی ارسال شده است.',
+      data: {
+        expiresIn: ttl,
+        sent: false as boolean,
+      },
+    };
+
+    const user = await this.userRepository.findOne({
+      where: { phone: dto.phone },
+    });
+
+    if (!user) {
+      return generic;
+    }
+
+    const otp = await this.otpService.requestOtp(
+      dto.phone,
+      OtpPurpose.RESET_PASSWORD,
+      OtpChannel.SMS,
+    );
+
+    return {
+      success: true,
+      message: generic.message,
+      data: {
+        expiresIn: otp.expiresIn,
+        debugNote: otp.debugNote,
+        sent: true,
+        userUuid: user.uuid,
+      },
+    };
+  }
+
+  /**
+   * Forgot-password step 2: verify OTP + set new password.
+   * Completes pending registration (activates + verifies) when needed.
+   */
+  async forgotPasswordReset(
+    dto: CustomerForgotPasswordResetDto,
+    meta?: { userAgent?: string; ipAddress?: string },
+  ) {
+    const ok = await this.otpService.verifyOtp(
+      dto.phone,
+      dto.code,
+      OtpChannel.SMS,
+    );
+    if (!ok) {
+      throw new BadRequestException('Invalid or expired OTP.');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { phone: dto.phone },
+      relations: ['userRoles', 'userRoles.role'],
+    });
+    if (!user) {
+      throw new NotFoundException('Account not found.');
+    }
+
+    user.password = await bcrypt.hash(dto.password, 10);
+    user.isActive = true;
+    user.isVerified = true;
+    user.lastLogin = new Date();
+    await this.userRepository.save(user);
+
+    if (!user.userRoles?.length) {
+      await this.assignCustomerRole(user);
+    }
+
+    const full = await this.loadUser(user.id);
+    const tokens = await this.tokenService.issueTokens(full, 'customer', meta);
+    return {
+      success: true,
+      message: 'رمز عبور با موفقیت تغییر کرد',
+      data: {
+        user: this.tokenService.toAuthUser(full),
         ...tokens,
       },
     };

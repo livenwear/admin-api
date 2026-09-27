@@ -3,6 +3,8 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { CustomerAuthService } from './customer-auth.service';
 import {
+  CustomerForgotPasswordRequestDto,
+  CustomerForgotPasswordResetDto,
   CustomerLogoutDto,
   CustomerOtpRequestDto,
   CustomerOtpVerifyDto,
@@ -18,12 +20,12 @@ export class CustomerAuthController {
   constructor(private readonly customerAuthService: CustomerAuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Customer register with phone + password' })
-  register(@Body() dto: CustomerRegisterDto, @Req() req: Request) {
-    return this.customerAuthService.register(dto, {
-      userAgent: req.headers['user-agent'],
-      ipAddress: req.ip,
-    });
+  @ApiOperation({
+    summary:
+      'Start registration (inactive until OTP). Returns expiresIn — no tokens.',
+  })
+  register(@Body() dto: CustomerRegisterDto) {
+    return this.customerAuthService.register(dto);
   }
 
   @Post('login')
@@ -49,6 +51,28 @@ export class CustomerAuthController {
   })
   verifyOtp(@Body() dto: CustomerOtpVerifyDto, @Req() req: Request) {
     return this.customerAuthService.verifyOtp(dto, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
+  }
+
+  @Post('forgot-password/request')
+  @ApiOperation({
+    summary: 'Request OTP to reset password (no user enumeration)',
+  })
+  forgotPasswordRequest(@Body() dto: CustomerForgotPasswordRequestDto) {
+    return this.customerAuthService.forgotPasswordRequest(dto);
+  }
+
+  @Post('forgot-password/reset')
+  @ApiOperation({
+    summary: 'Verify OTP and set a new password (returns session)',
+  })
+  forgotPasswordReset(
+    @Body() dto: CustomerForgotPasswordResetDto,
+    @Req() req: Request,
+  ) {
+    return this.customerAuthService.forgotPasswordReset(dto, {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
     });
