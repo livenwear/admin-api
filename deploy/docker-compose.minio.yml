@@ -1,6 +1,15 @@
-# Explicit project name — must NEVER share Compose project "deploy" with Sumer
-# (both live under .../deploy/docker-compose.minio.yml on the same VPS).
-name: liven-minio
+# Liven MinIO only — must not touch Sumer MinIO on the same VPS.
+#
+# Isolation:
+#   - container_name: liven-minio  (Sumer uses a different name)
+#   - host ports 9010/9011        (Sumer typically 9000/9001)
+#   - data dir: /opt/liven-data/minio
+#   - compose project: always started with `-p liven-minio` (see deploy-vps.sh)
+#
+# Do NOT add top-level `name:` — older `docker-compose` v1 on the VPS rejects it
+# with: 'name' does not match any of the regexes: '^x-'
+
+version: "3.3"
 
 services:
   minio:

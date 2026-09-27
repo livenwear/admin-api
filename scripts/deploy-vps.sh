@@ -272,9 +272,10 @@ deploy_minio() {
   log "Starting/updating Liven MinIO container (ports ${MINIO_HOST_PORT}/${MINIO_CONSOLE_HOST_PORT})"
   mkdir -p /opt/liven-data/minio
   export MINIO_ROOT_USER MINIO_ROOT_PASSWORD
-  # Force a unique Compose project so we never collide with Sumer's .../deploy/ project.
+  # Unique project name so we never share Compose state with Sumer's .../deploy/ stack.
+  # Prefer -p (works on docker-compose v1 and docker compose v2); avoid YAML `name:`.
   export COMPOSE_PROJECT_NAME=liven-minio
-  $DOCKER_COMPOSE_CMD -f "$MINIO_COMPOSE_FILE" up -d
+  $DOCKER_COMPOSE_CMD -p liven-minio -f "$MINIO_COMPOSE_FILE" up -d
 }
 
 build_api() {
