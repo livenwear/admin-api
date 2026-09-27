@@ -21,10 +21,9 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { InjectRepository } from '@nestjs/typeorm';
 import type { Response } from 'express';
 import { assertTicketAttachment } from 'src/common/utils/ticket-attachment';
-import { FileEntity, RoleSlug, User } from 'src/entities';
+import { RoleSlug, User } from 'src/entities';
 import { CurrentUser } from 'src/modules/auth/shared/current-user.decorator';
 import { JwtAuthGuard } from 'src/modules/auth/shared/jwt-auth.guard';
 import {
@@ -32,8 +31,8 @@ import {
   Roles,
 } from 'src/modules/auth/shared/roles.decorator';
 import { StorageNamespace } from 'src/storage/storage.constants';
+import { MediaFilesService } from 'src/storage/media-files.service';
 import { StorageService } from 'src/storage/storage.service';
-import { Repository } from 'typeorm';
 import {
   AdminEditMessageDto,
   AdminUpdateTicketDto,
@@ -51,8 +50,7 @@ export class AdminTicketsController {
   constructor(
     private readonly ticketsService: AdminTicketsService,
     private readonly storageService: StorageService,
-    @InjectRepository(FileEntity)
-    private readonly fileRepo: Repository<FileEntity>,
+    private readonly mediaFiles: MediaFilesService,
   ) {}
 
   @Get('stats')
@@ -137,22 +135,10 @@ export class AdminTicketsController {
         generateThumbnails: false,
       },
     );
-    const row = await this.fileRepo.save(
-      this.fileRepo.create({
-        bucket: stored.bucket,
-        objectKey: stored.objectKey,
-        namespace: stored.namespace,
-        originalName: stored.originalName,
-        mimeType: stored.mimeType,
-        size: String(stored.size),
-        extension: stored.extension || null,
-        publicUrl: '',
-        entityId: user.uuid,
-        variant: null,
-        metadata: { storageFileId: stored.fileId, ticketUpload: true },
-        isPublic: false,
-      }),
-    );
+    const row = await this.mediaFiles.persistUploaded(stored, {
+      entityId: user.uuid,
+      metadata: { ticketUpload: true },
+    });
     return {
       success: true,
       data: {

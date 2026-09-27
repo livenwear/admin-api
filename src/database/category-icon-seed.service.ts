@@ -3,8 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { Repository } from 'typeorm';
-import { Category, FileEntity } from 'src/entities';
+import { Category } from 'src/entities';
 import { StorageNamespace } from 'src/storage/storage.constants';
+import { MediaFilesService } from 'src/storage/media-files.service';
 import { StorageService } from 'src/storage/storage.service';
 
 const ICON_KEYS = [
@@ -44,9 +45,8 @@ export class CategoryIconSeedService implements OnModuleInit {
   constructor(
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
-    @InjectRepository(FileEntity)
-    private readonly fileRepo: Repository<FileEntity>,
     private readonly storageService: StorageService,
+    private readonly mediaFiles: MediaFilesService,
   ) {}
 
   async onModuleInit() {
@@ -110,22 +110,12 @@ export class CategoryIconSeedService implements OnModuleInit {
         },
       );
 
-      const row = await this.fileRepo.save(
-        this.fileRepo.create({
-          bucket: stored.bucket,
-          objectKey: stored.objectKey,
-          namespace: stored.namespace,
-          originalName: stored.originalName,
-          mimeType: 'image/svg+xml',
-          size: String(stored.size),
-          extension: 'svg',
-          publicUrl: '',
-          entityId: cat.uuid,
-          variant: stored.variant || null,
-          metadata: { storageFileId: stored.fileId, seeded: true },
-          isPublic: false,
-        }),
-      );
+      const row = await this.mediaFiles.persistUploaded(stored, {
+        entityId: cat.uuid,
+        mimeTypeOverride: 'image/svg+xml',
+        extensionOverride: 'svg',
+        metadata: { seeded: true },
+      });
 
       cat.imageUrl = `file://${row.uuid}`;
       await this.categoryRepo.save(cat);

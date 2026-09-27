@@ -26,7 +26,13 @@ import {
 @Injectable()
 export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
+  /** Internal client — API ↔ MinIO on loopback (put/get/delete/stat). */
   private client: Minio.Client;
+  /**
+   * Presign-only client keyed to MINIO_PUBLIC_URL (e.g. https://cdn.livenmode.ir).
+   * Signing is local crypto; Host must match what the browser sends through nginx.
+   */
+  private presignClient: Minio.Client;
   private buckets: Record<StorageBucketType, string>;
   private publicBaseUrl: string;
   private endpoint: string;
@@ -78,9 +84,25 @@ export class StorageService implements OnModuleInit {
       accessKey,
       secretKey,
     });
+
+    const publicEp = this.parseEndpointUrl(this.publicBaseUrl) ?? {
+      endPoint,
+      port,
+      useSSL,
+    };
+    this.presignClient = new Minio.Client({
+      endPoint: publicEp.endPoint,
+      port: publicEp.port,
+      useSSL: publicEp.useSSL,
+      accessKey,
+      secretKey,
+    });
   }
 
   async onModuleInit() {
+    this.logger.log(
+      `MinIO internal=${this.endpoint} public/presign=${this.publicBaseUrl}`,
+    );
     try {
       for (const bucket of Object.values(this.buckets)) {
         const exists = await this.client.bucketExists(bucket);
@@ -280,34 +302,91 @@ export class StorageService implements OnModuleInit {
     };
   }
 
+  async objectExists(bucket: string, objectKey: string): Promise<boolean> {
+    try {
+      await this.client.statObject(bucket, objectKey);
+      return true;
+    } catch (err) {
+      if (this.isNotFoundError(err)) return false;
+      throw err;
+    }
+  }
+
+  async listObjectKeys(bucket: string, prefix = ''): Promise<string[]> {
+    const keys: string[] = [];
+    const stream = this.client.listObjectsV2(bucket, prefix, true);
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (obj) => {
+        if (obj.name) keys.push(obj.name);
+      });
+      stream.on('error', reject);
+      stream.on('end', () => resolve());
+    });
+    return keys;
+  }
+
+  async removeObjectKeys(bucket: string, keys: string[]): Promise<void> {
+    if (!keys.length) return;
+    // MinIO removeObjects accepts batches; keep chunks modest
+    const chunkSize = 100;
+    for (let i = 0; i < keys.length; i += chunkSize) {
+      const chunk = keys.slice(i, i + chunkSize);
+      await this.client.removeObjects(bucket, chunk);
+    }
+  }
+
+  isThumbnailKey(objectKey: string): boolean {
+    return objectKey.includes('/thumbs/');
+  }
+
+  fileIdFromObjectKey(objectKey: string): string {
+    const fileName = objectKey.split('/').pop() ?? objectKey;
+    return fileName.replace(extname(fileName), '');
+  }
+
+  thumbnailFileIdFromKey(objectKey: string): string | null {
+    const match = objectKey.match(/\/thumbs\/([^/]+)\//);
+    return match?.[1] ?? null;
+  }
+
+  /** Public wrapper — used by reconcile to map namespace → bucket */
+  resolveBucketPublic(namespace: StorageNamespace): string {
+    return this.resolveBucket(namespace);
+  }
+
   async delete(bucket: string, objectKey: string): Promise<{ message: string }> {
-    await this.client.removeObject(bucket, objectKey);
+    try {
+      await this.client.removeObject(bucket, objectKey);
+    } catch (err) {
+      if (!this.isNotFoundError(err)) throw err;
+    }
 
     // Best-effort thumbnail cleanup
-    const fileName = objectKey.split('/').pop() ?? '';
-    const fileId = fileName.replace(extname(fileName), '');
+    const fileId = this.fileIdFromObjectKey(objectKey);
     const prefixParts = objectKey.split('/');
     prefixParts.pop();
     const thumbsPrefix = `${prefixParts.join('/')}/thumbs/${fileId}/`;
 
     try {
-      const toRemove: string[] = [];
-      const stream = this.client.listObjectsV2(bucket, thumbsPrefix, true);
-      await new Promise<void>((resolve, reject) => {
-        stream.on('data', (obj) => {
-          if (obj.name) toRemove.push(obj.name);
-        });
-        stream.on('error', reject);
-        stream.on('end', () => resolve());
-      });
+      const toRemove = await this.listObjectKeys(bucket, thumbsPrefix);
       if (toRemove.length) {
-        await this.client.removeObjects(bucket, toRemove);
+        await this.removeObjectKeys(bucket, toRemove);
       }
     } catch {
       // ignore thumbnail cleanup errors
     }
 
     return { message: 'File deleted' };
+  }
+
+  private isNotFoundError(err: unknown): boolean {
+    const e = err as { code?: string; statusCode?: number; message?: string };
+    return (
+      e?.code === 'NotFound' ||
+      e?.code === 'NoSuchKey' ||
+      e?.statusCode === 404 ||
+      /not\s*found/i.test(e?.message || '')
+    );
   }
 
   getDownloadUrl(bucket: string, objectKey: string): string {
@@ -318,13 +397,35 @@ export class StorageService implements OnModuleInit {
     return this.client.getObject(bucket, objectKey);
   }
 
-  /** Short-lived signed URL for authenticated admin UI only */
+  /**
+   * Short-lived signed URL for admin/browser display.
+   * Always signed for MINIO_PUBLIC_URL host (cdn), never loopback —
+   * otherwise browsers receive http://127.0.0.1:9010/... which only works on the VPS itself.
+   */
   async getPresignedUrl(
     bucket: string,
     objectKey: string,
     expirySeconds = 3600,
   ): Promise<string> {
-    return this.client.presignedGetObject(bucket, objectKey, expirySeconds);
+    return this.presignClient.presignedGetObject(
+      bucket,
+      objectKey,
+      expirySeconds,
+    );
+  }
+
+  private parseEndpointUrl(
+    raw: string,
+  ): { endPoint: string; port: number; useSSL: boolean } | null {
+    try {
+      const u = new URL(raw);
+      if (!u.hostname) return null;
+      const useSSL = u.protocol === 'https:';
+      const port = u.port ? Number(u.port) : useSSL ? 443 : 80;
+      return { endPoint: u.hostname, port, useSSL };
+    } catch {
+      return null;
+    }
   }
 
   private resolveBucket(namespace: StorageNamespace): string {

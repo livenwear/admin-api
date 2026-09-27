@@ -31,7 +31,7 @@ import {
   User,
 } from 'src/entities';
 import { DataSource, Repository } from 'typeorm';
-import { StorageService } from 'src/storage/storage.service';
+import { MediaFilesService } from 'src/storage/media-files.service';
 import { CommerceSettingsService } from './commerce-settings.service';
 import { resolveShippingFee } from './commerce-settings.types';
 import { orderLabels } from './order-labels';
@@ -49,7 +49,7 @@ export class CheckoutService {
     private readonly config: ConfigService,
     private readonly settingsService: CommerceSettingsService,
     private readonly inventoryService: OrderInventoryService,
-    private readonly storageService: StorageService,
+    private readonly mediaFiles: MediaFilesService,
     @InjectRepository(Cart)
     private readonly cartRepo: Repository<Cart>,
     @InjectRepository(Order)
@@ -67,12 +67,7 @@ export class CheckoutService {
     if (!fileUuid) return;
     const file = await this.fileRepo.findOne({ where: { uuid: fileUuid } });
     if (!file) return;
-    try {
-      await this.storageService.delete(file.bucket, file.objectKey);
-    } catch {
-      // already missing in storage — still clean DB
-    }
-    await this.fileRepo.softRemove(file);
+    await this.mediaFiles.removeSynced(file);
   }
 
   private hmacSecret() {

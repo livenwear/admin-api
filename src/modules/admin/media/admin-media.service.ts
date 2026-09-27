@@ -1,12 +1,16 @@
 import {
   Injectable,
-  NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FileEntity } from 'src/entities';
-import { assertSafeSvgUpload, isSvgUpload, assertRasterImageUpload } from 'src/common/utils/svg-upload';
+import {
+  assertSafeSvgUpload,
+  isSvgUpload,
+  assertRasterImageUpload,
+} from 'src/common/utils/svg-upload';
+import { MediaFilesService } from 'src/storage/media-files.service';
 import { StorageService } from 'src/storage/storage.service';
 import { StorageNamespace } from 'src/storage/storage.constants';
 
@@ -16,6 +20,7 @@ export class AdminMediaService {
     @InjectRepository(FileEntity)
     private readonly fileRepository: Repository<FileEntity>,
     private readonly storageService: StorageService,
+    private readonly mediaFiles: MediaFilesService,
   ) {}
 
   async upload(
@@ -55,36 +60,9 @@ export class AdminMediaService {
       },
     );
 
-    let row: FileEntity;
-    try {
-      row = await this.fileRepository.save(
-        this.fileRepository.create({
-          bucket: stored.bucket,
-          objectKey: stored.objectKey,
-          namespace: stored.namespace,
-          originalName: stored.originalName,
-          mimeType: stored.mimeType,
-          size: String(stored.size),
-          extension: stored.extension || null,
-          publicUrl: '',
-          entityId: entityId || null,
-          variant: stored.variant || null,
-          metadata: {
-            storageFileId: stored.fileId,
-            thumbnails: stored.thumbnails ?? [],
-          },
-          isPublic: false,
-        }),
-      );
-    } catch (err) {
-      // Keep MinIO and DB in sync: roll back object if DB insert fails
-      try {
-        await this.storageService.delete(stored.bucket, stored.objectKey);
-      } catch {
-        /* ignore cleanup error */
-      }
-      throw err;
-    }
+    const row = await this.mediaFiles.persistUploaded(stored, {
+      entityId: entityId || null,
+    });
 
     const url = await this.storageService.getPresignedUrl(
       row.bucket,
@@ -110,6 +88,12 @@ export class AdminMediaService {
   }) {
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.min(Math.max(Number(query.limit) || 24, 1), 100);
+
+    // Keep DB ↔ MinIO synchronized before serving the library
+    if (page === 1) {
+      await this.mediaFiles.reconcile(query.namespace?.trim() || undefined);
+    }
+
     const sortBy =
       query.sortBy === 'size' || query.sortBy === 'originalName'
         ? query.sortBy
@@ -135,7 +119,6 @@ export class AdminMediaService {
     if (query.dateTo?.trim()) {
       const to = new Date(query.dateTo);
       if (!Number.isNaN(to.getTime())) {
-        // inclusive end-of-day if date-only
         if (/^\d{4}-\d{2}-\d{2}$/.test(query.dateTo.trim())) {
           to.setHours(23, 59, 59, 999);
         }
@@ -144,7 +127,6 @@ export class AdminMediaService {
     }
 
     if (sortBy === 'size') {
-      // size stored as varchar/bigint string
       qb.orderBy('CAST(f.size AS BIGINT)', sortOrder);
     } else if (sortBy === 'originalName') {
       qb.orderBy('f.originalName', sortOrder);
@@ -161,11 +143,9 @@ export class AdminMediaService {
       .take(limit)
       .getMany();
 
-    // Verify each object still exists in MinIO; drop DB orphans
     const data: ReturnType<AdminMediaService['toDto']>[] = [];
     for (const file of rows) {
       try {
-        await this.storageService.getMetadata(file.bucket, file.objectKey);
         const accessUrl = await this.storageService.getPresignedUrl(
           file.bucket,
           file.objectKey,
@@ -173,6 +153,7 @@ export class AdminMediaService {
         );
         data.push(this.toDto(file, accessUrl));
       } catch {
+        // Extremely rare race: object vanished after reconcile
         await this.fileRepository.softRemove(file);
       }
     }
@@ -198,15 +179,17 @@ export class AdminMediaService {
     };
   }
 
+  async reconcile(namespace?: string) {
+    const data = await this.mediaFiles.reconcile(namespace);
+    return {
+      success: true,
+      message: 'Media storage synchronized',
+      data,
+    };
+  }
+
   async getAccessUrl(uuid: string, expirySeconds = 3600) {
-    const file = await this.findByUuid(uuid);
-    // Ensure object exists in MinIO before issuing URL
-    try {
-      await this.storageService.getMetadata(file.bucket, file.objectKey);
-    } catch {
-      await this.fileRepository.softRemove(file);
-      throw new NotFoundException('File missing in storage.');
-    }
+    const file = await this.mediaFiles.requireStoredOrPurge(uuid);
     const url = await this.storageService.getPresignedUrl(
       file.bucket,
       file.objectKey,
@@ -224,32 +207,16 @@ export class AdminMediaService {
   }
 
   async stream(uuid: string) {
-    const file = await this.findByUuid(uuid);
-    try {
-      const stream = await this.storageService.getObjectStream(
-        file.bucket,
-        file.objectKey,
-      );
-      return { file, stream };
-    } catch {
-      await this.fileRepository.softRemove(file);
-      throw new NotFoundException('File missing in storage.');
-    }
+    const file = await this.mediaFiles.requireStoredOrPurge(uuid);
+    const stream = await this.storageService.getObjectStream(
+      file.bucket,
+      file.objectKey,
+    );
+    return { file, stream };
   }
 
   async remove(uuid: string) {
-    const file = await this.findByUuid(uuid);
-    let minioDeleted = false;
-    try {
-      await this.storageService.delete(file.bucket, file.objectKey);
-      minioDeleted = true;
-    } catch {
-      // If already gone from MinIO, still clean DB
-      minioDeleted = true;
-    }
-    if (minioDeleted) {
-      await this.fileRepository.softRemove(file);
-    }
+    await this.mediaFiles.removeSyncedByUuid(uuid);
     return { success: true, message: 'File deleted' };
   }
 
@@ -267,11 +234,5 @@ export class AdminMediaService {
       accessUrl: accessUrl || null,
       metadata: file.metadata,
     };
-  }
-
-  private async findByUuid(uuid: string) {
-    const file = await this.fileRepository.findOne({ where: { uuid } });
-    if (!file) throw new NotFoundException('File not found.');
-    return file;
   }
 }

@@ -261,6 +261,9 @@ normalize_runtime_env() {
   upsert_env "MINIO_PORT" "$MINIO_HOST_PORT"
   upsert_env "MINIO_USE_SSL" "false"
   upsert_env "DATABASE_HOST" "127.0.0.1"
+  # Browser-facing signed URLs must use public CDN host (not 127.0.0.1).
+  upsert_env "MINIO_PUBLIC_URL" "https://cdn.livenmode.ir"
+  upsert_env "MINIO_CONSOLE_URL" "https://minio-console.livenmode.ir"
 }
 
 deploy_minio() {

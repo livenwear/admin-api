@@ -31,6 +31,7 @@ import {
   Warehouse,
 } from 'src/entities';
 import { StorageService } from 'src/storage/storage.service';
+import { MediaFilesService } from 'src/storage/media-files.service';
 import {
   pickEffectivePrice,
   priceAmounts,
@@ -90,6 +91,7 @@ export class AdminProductsService {
     @InjectRepository(Inventory)
     private readonly inventoryRepo: Repository<Inventory>,
     private readonly storageService: StorageService,
+    private readonly mediaFiles: MediaFilesService,
   ) {}
 
   async list(query: AdminListProductsQueryDto) {
@@ -394,15 +396,10 @@ export class AdminProductsService {
 
     const wasPrimary = image.isPrimary;
     const file = image.file as FileEntity | undefined;
-    await this.imageRepo.remove(image);
     if (file) {
-      try {
-        await this.storageService.delete(file.bucket, file.objectKey);
-      } catch {
-        // ignore storage cleanup failure
-      }
-      await this.fileRepo.softRemove(file);
+      await this.mediaFiles.removeSynced(file);
     }
+    await this.imageRepo.remove(image);
 
     if (wasPrimary) {
       const next = await this.imageRepo.find({

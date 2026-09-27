@@ -63,3 +63,26 @@ export interface ListFilesOptions {
   entityId?: string;
   limit?: number;
 }
+
+export interface MediaReconcileResult {
+  scannedDbRows: number;
+  scannedMinioObjects: number;
+  /** DB rows soft-deleted because MinIO object was missing */
+  removedDbOrphans: number;
+  /** MinIO objects deleted because no active DB row referenced them */
+  removedMinioOrphans: number;
+  /** Soft-deleted DB rows whose leftover MinIO objects were cleaned */
+  cleanedSoftDeletedStorage: number;
+  /** Orphan thumbnail prefixes removed */
+  removedOrphanThumbnails: number;
+  namespaces: string[];
+}
+
+export interface PersistUploadedFileOptions {
+  entityId?: string | null;
+  isPublic?: boolean;
+  publicUrl?: string;
+  metadata?: Record<string, unknown> | null;
+  mimeTypeOverride?: string;
+  extensionOverride?: string | null;
+}

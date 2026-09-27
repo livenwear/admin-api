@@ -22,11 +22,12 @@ import {
 } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { assertTicketAttachment } from 'src/common/utils/ticket-attachment';
-import { FileEntity, Order, User } from 'src/entities';
+import { Order, User } from 'src/entities';
 import { CurrentUser } from 'src/modules/auth/shared/current-user.decorator';
 import { JwtAuthGuard } from 'src/modules/auth/shared/jwt-auth.guard';
 import { AuthAudienceRequired } from 'src/modules/auth/shared/roles.decorator';
 import { StorageNamespace } from 'src/storage/storage.constants';
+import { MediaFilesService } from 'src/storage/media-files.service';
 import { StorageService } from 'src/storage/storage.service';
 import { Repository } from 'typeorm';
 import { CheckoutService } from './checkout.service';
@@ -47,8 +48,7 @@ export class CustomerCheckoutController {
   constructor(
     private readonly checkoutService: CheckoutService,
     private readonly storageService: StorageService,
-    @InjectRepository(FileEntity)
-    private readonly fileRepo: Repository<FileEntity>,
+    private readonly mediaFiles: MediaFilesService,
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
   ) {}
@@ -146,22 +146,10 @@ export class CustomerCheckoutController {
         generateThumbnails: false,
       },
     );
-    const row = await this.fileRepo.save(
-      this.fileRepo.create({
-        bucket: stored.bucket,
-        objectKey: stored.objectKey,
-        namespace: stored.namespace,
-        originalName: stored.originalName,
-        mimeType: stored.mimeType,
-        size: String(stored.size),
-        extension: stored.extension || null,
-        publicUrl: '',
-        entityId: user.uuid,
-        variant: stored.variant || null,
-        metadata: { storageFileId: stored.fileId, orderReceipt: true },
-        isPublic: false,
-      }),
-    );
+    const row = await this.mediaFiles.persistUploaded(stored, {
+      entityId: user.uuid,
+      metadata: { orderReceipt: true },
+    });
     return {
       success: true,
       data: {

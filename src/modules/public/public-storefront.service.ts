@@ -32,6 +32,7 @@ import {
   priceAmounts,
 } from 'src/common/pricing/effective-price';
 import { StorageNamespace } from 'src/storage/storage.constants';
+import { MediaFilesService } from 'src/storage/media-files.service';
 import { StorageService } from 'src/storage/storage.service';
 import { Brackets, Repository } from 'typeorm';
 
@@ -95,6 +96,7 @@ export class PublicStorefrontService {
     @InjectRepository(Attribute)
     private readonly attributeRepo: Repository<Attribute>,
     private readonly storageService: StorageService,
+    private readonly mediaFiles: MediaFilesService,
   ) {}
 
   mediaPath(fileUuid: string | null | undefined) {
@@ -1097,8 +1099,7 @@ export class PublicStorefrontService {
   }
 
   async streamMedia(uuid: string) {
-    const file = await this.fileRepo.findOne({ where: { uuid } });
-    if (!file) throw new NotFoundException('Media not found.');
+    const file = await this.mediaFiles.requireStoredOrPurge(uuid);
     if (!PUBLIC_MEDIA_NAMESPACES.has(file.namespace)) {
       throw new BadRequestException('Media is not publicly accessible.');
     }

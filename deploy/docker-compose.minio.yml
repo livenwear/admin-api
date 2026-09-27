@@ -22,6 +22,8 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # Public S3 hostname behind nginx — keeps server-side URL generation aligned
+      MINIO_SERVER_URL: ${MINIO_SERVER_URL:-https://cdn.livenmode.ir}
     command: server /data --console-address ":9001"
     volumes:
       - /opt/liven-data/minio:/data

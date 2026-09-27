@@ -92,6 +92,15 @@ export class AdminMediaController {
     });
   }
 
+  @Post('reconcile')
+  @ApiOperation({
+    summary:
+      'Force bidirectional sync: drop DB orphans and MinIO orphans (optional namespace)',
+  })
+  reconcile(@Query('namespace') namespace?: string) {
+    return this.mediaService.reconcile(namespace);
+  }
+
   @Get(':uuid/url')
   @ApiOperation({ summary: 'Get short-lived private access URL' })
   getUrl(@Param('uuid', ParseUUIDPipe) uuid: string) {

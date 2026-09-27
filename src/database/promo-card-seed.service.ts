@@ -2,8 +2,9 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import sharp from 'sharp';
 import { Repository } from 'typeorm';
-import { FileEntity, PromoCard, PromoCardRow } from 'src/entities';
+import { PromoCard, PromoCardRow } from 'src/entities';
 import { StorageNamespace } from 'src/storage/storage.constants';
+import { MediaFilesService } from 'src/storage/media-files.service';
 import { StorageService } from 'src/storage/storage.service';
 
 const ROW_DEFS = [
@@ -62,9 +63,8 @@ export class PromoCardSeedService implements OnModuleInit {
     private readonly rowRepo: Repository<PromoCardRow>,
     @InjectRepository(PromoCard)
     private readonly cardRepo: Repository<PromoCard>,
-    @InjectRepository(FileEntity)
-    private readonly fileRepo: Repository<FileEntity>,
     private readonly storageService: StorageService,
+    private readonly mediaFiles: MediaFilesService,
   ) {}
 
   async onModuleInit() {
@@ -114,22 +114,12 @@ export class PromoCardSeedService implements OnModuleInit {
             generateThumbnails: true,
           },
         );
-        const file = await this.fileRepo.save(
-          this.fileRepo.create({
-            bucket: stored.bucket,
-            objectKey: stored.objectKey,
-            namespace: stored.namespace,
-            originalName: stored.originalName,
-            mimeType: 'image/jpeg',
-            size: String(stored.size),
-            extension: 'jpg',
-            publicUrl: '',
-            entityId: row.uuid,
-            variant: stored.variant || null,
-            metadata: { storageFileId: stored.fileId, seeded: true },
-            isPublic: false,
-          }),
-        );
+        const file = await this.mediaFiles.persistUploaded(stored, {
+          entityId: row.uuid,
+          mimeTypeOverride: 'image/jpeg',
+          extensionOverride: 'jpg',
+          metadata: { seeded: true },
+        });
         await this.cardRepo.save(
           this.cardRepo.create({
             row,
