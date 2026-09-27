@@ -3,6 +3,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsDateString,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -11,6 +12,7 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -168,6 +170,42 @@ export class ProductVariantDto {
   @IsInt()
   @Min(0)
   stockQuantity?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'When set on create/update, appends a price row effective at this time (ISO). Defaults to now if price changed.',
+  })
+  @IsOptional()
+  @IsDateString()
+  priceEffectiveFrom?: string;
+}
+
+export class AdminCreateVariantPriceDto {
+  @ApiProperty({ example: 890000 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amount: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  compareAtAmount?: number | null;
+
+  @ApiPropertyOptional({
+    description: 'When this price becomes effective (ISO datetime). Default: now',
+  })
+  @IsOptional()
+  @IsDateString()
+  effectiveFrom?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string | null;
 }
 
 export class ProductImageDto {
@@ -292,6 +330,20 @@ export class AdminCreateProductDto {
   @IsOptional()
   @IsBoolean()
   isAmazing?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'نمایش در ترب (فید Product API v3)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isListedOnTorob?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'نمایش در ایمالز (فید Extraction API)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isListedOnEmalls?: boolean;
 
   @ApiPropertyOptional({
     description:
@@ -424,6 +476,16 @@ export class AdminListProductsQueryDto {
   @IsOptional()
   @IsString()
   isAmazing?: string;
+
+  @ApiPropertyOptional({ enum: ['true', 'false'] })
+  @IsOptional()
+  @IsString()
+  isListedOnTorob?: string;
+
+  @ApiPropertyOptional({ enum: ['true', 'false'] })
+  @IsOptional()
+  @IsString()
+  isListedOnEmalls?: string;
 
   @ApiPropertyOptional({
     enum: ['createdAt', 'updatedAt', 'name', 'status'],

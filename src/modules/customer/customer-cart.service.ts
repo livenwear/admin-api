@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
+  pickEffectivePrice,
+  priceAmounts,
+} from 'src/common/pricing/effective-price';
+import {
   Cart,
   CartItem,
   Product,
@@ -79,16 +83,11 @@ export class CustomerCartService {
 
   private variantPrice(variant: ProductVariant) {
     const prices = (variant as any).prices || [];
-    const active =
-      prices.find((p: { isActive?: boolean }) => p.isActive) || prices[0];
-    if (!active) {
-      return { unitPrice: 0, compareAtPrice: null as number | null };
-    }
+    const active = pickEffectivePrice(prices);
+    const amounts = priceAmounts(active);
     return {
-      unitPrice: Number(active.amount) || 0,
-      compareAtPrice: active.compareAtAmount
-        ? Number(active.compareAtAmount)
-        : null,
+      unitPrice: amounts.amount ?? 0,
+      compareAtPrice: amounts.compareAtAmount,
     };
   }
 

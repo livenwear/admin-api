@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -50,13 +49,6 @@ export class CustomerOtpRequestDto {
   @IsString()
   @Matches(PHONE_REGEX, { message: 'phone must be a valid Iranian mobile' })
   phone: string;
-
-  @ApiProperty({
-    enum: ['login', 'register'],
-    description: 'login = existing user, register = new user',
-  })
-  @IsIn(['login', 'register'])
-  purpose: 'login' | 'register';
 }
 
 export class CustomerOtpVerifyDto {

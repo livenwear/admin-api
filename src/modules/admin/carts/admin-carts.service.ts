@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { pickEffectivePrice, priceAmounts } from 'src/common/pricing/effective-price';
 import { Cart, CartItem, Order, ProductVariant, User } from 'src/entities';
 import { PaymentStatus, ProductStatus } from 'src/entities/enums';
 import { In, Repository } from 'typeorm';
@@ -123,14 +124,14 @@ export class AdminCartsService {
         const variant = item.variant as ProductVariant;
         const product = (variant as any).product;
         const prices = (variant as any).prices || [];
-        const active =
-          prices.find((p: { isActive?: boolean }) => p.isActive) || prices[0];
+        const active = pickEffectivePrice(prices);
+        const amounts = priceAmounts(active);
         return {
           quantity: item.quantity,
           productName: product?.name || '—',
           productUuid: product?.uuid || null,
           variantTitle: variant?.title || null,
-          unitPrice: active ? Number(active.amount) : 0,
+          unitPrice: amounts.amount ?? 0,
         };
       });
 

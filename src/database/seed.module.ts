@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   Category,
   FileEntity,
+  Price,
   PromoCard,
   PromoCardRow,
   Role,
@@ -10,6 +11,7 @@ import {
   UserRoleEntity,
 } from 'src/entities';
 import { CategoryIconSeedService } from './category-icon-seed.service';
+import { PriceScheduleBootstrapService } from './price-schedule-bootstrap.service';
 import { PromoCardSeedService } from './promo-card-seed.service';
 import { SeedService } from './seed.service';
 
@@ -23,8 +25,14 @@ import { SeedService } from './seed.service';
       FileEntity,
       PromoCardRow,
       PromoCard,
+      Price,
     ]),
   ],
-  providers: [SeedService, CategoryIconSeedService, PromoCardSeedService],
+  providers: [
+    SeedService,
+    CategoryIconSeedService,
+    PromoCardSeedService,
+    PriceScheduleBootstrapService,
+  ],
 })
 export class SeedModule {}

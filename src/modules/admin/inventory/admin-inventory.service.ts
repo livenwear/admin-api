@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
+  pickEffectivePrice,
+  priceAmounts,
+} from 'src/common/pricing/effective-price';
+import {
   Inventory,
   ProductVariant,
   StockMovement,
@@ -61,9 +65,8 @@ export class AdminInventoryService {
     const reservedQuantity = inventory?.reservedQuantity ?? 0;
     const available = Math.max(0, quantity - reservedQuantity);
     const product = variant.product as any;
-    const price =
-      (variant.prices || []).find((p: any) => p.isActive) ||
-      variant.prices?.[0];
+    const price = pickEffectivePrice(variant.prices || []);
+    const amounts = priceAmounts(price);
     const primaryImage =
       (product?.images || []).find((img: any) => img.isPrimary) ||
       product?.images?.[0];
@@ -79,7 +82,7 @@ export class AdminInventoryService {
       available,
       stockStatus:
         available <= 0 ? 'out' : available <= 5 ? 'low' : ('in_stock' as const),
-      price: price ? Number(price.amount) : null,
+      price: amounts.amount,
       warehouse: {
         uuid: warehouse.uuid,
         name: warehouse.name,

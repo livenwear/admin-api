@@ -8,6 +8,7 @@ export { PaymentStatus } from './payment-status.enum';
 export { PaymentMethod } from './payment-method.enum';
 export { ShipmentStatus } from './shipment-status.enum';
 export { PostStatus } from './post-status.enum';
+export { OtpChannel, OtpPurpose } from './otp.enum';
 export {
   TicketStatus,
   TicketPriority,

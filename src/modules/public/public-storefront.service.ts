@@ -9,7 +9,6 @@ import {
   Banner,
   Category,
   FileEntity,
-  Price,
   Product,
   ProductImage,
   ProductLabel,
@@ -27,6 +26,11 @@ import {
   generateCategoryPublicId,
   isCategoryPublicId,
 } from 'src/common/utils/category-public-id';
+import {
+  minEffectiveVariantPrice,
+  pickEffectivePrice,
+  priceAmounts,
+} from 'src/common/pricing/effective-price';
 import { StorageNamespace } from 'src/storage/storage.constants';
 import { StorageService } from 'src/storage/storage.service';
 import { Brackets, Repository } from 'typeorm';
@@ -419,10 +423,19 @@ export class PublicStorefrontService {
     const sort = opts.sort || (filter === 'newest' ? 'newest' : filter === 'featured' ? 'popular' : 'newest');
     const attrMap = this.parseAttrFilters(opts.attrs);
 
-    const minPriceSql = `(SELECT COALESCE(MIN(pr.amount::numeric), 0)
-      FROM prices pr
-      INNER JOIN product_variants pv ON pv.id = pr.variant_id
-      WHERE pv.product_id = p.id AND pv."isActive" = true AND pr."isActive" = true)`;
+    const minPriceSql = `(SELECT COALESCE(MIN(eff.amt), 0)
+      FROM product_variants pv
+      CROSS JOIN LATERAL (
+        SELECT pr.amount::numeric AS amt
+        FROM prices pr
+        WHERE pr.variant_id = pv.id
+          AND pr."isActive" = true
+          AND pr."deletedAt" IS NULL
+          AND COALESCE(pr."effectiveFrom", pr."createdAt") <= NOW()
+        ORDER BY COALESCE(pr."effectiveFrom", pr."createdAt") DESC, pr."createdAt" DESC
+        LIMIT 1
+      ) eff
+      WHERE pv.product_id = p.id AND pv."isActive" = true AND pv."deletedAt" IS NULL)`;
 
     const qb = this.productRepo
       .createQueryBuilder('p')
@@ -481,10 +494,19 @@ export class PublicStorefrontService {
       qb.andWhere(
         `EXISTS (
           SELECT 1 FROM product_variants pv2
-          INNER JOIN prices pr2 ON pr2.variant_id = pv2.id
-          WHERE pv2.product_id = p.id AND pv2."isActive" = true AND pr2."isActive" = true
-            AND pr2."compareAtAmount" IS NOT NULL
-            AND pr2."compareAtAmount"::numeric > pr2.amount::numeric
+          CROSS JOIN LATERAL (
+            SELECT pr2.amount::numeric AS amt, pr2."compareAtAmount"::numeric AS cmp
+            FROM prices pr2
+            WHERE pr2.variant_id = pv2.id
+              AND pr2."isActive" = true
+              AND pr2."deletedAt" IS NULL
+              AND COALESCE(pr2."effectiveFrom", pr2."createdAt") <= NOW()
+            ORDER BY COALESCE(pr2."effectiveFrom", pr2."createdAt") DESC, pr2."createdAt" DESC
+            LIMIT 1
+          ) eff2
+          WHERE pv2.product_id = p.id AND pv2."isActive" = true AND pv2."deletedAt" IS NULL
+            AND eff2.cmp IS NOT NULL
+            AND eff2.cmp > eff2.amt
         )`,
       );
     }
@@ -519,10 +541,18 @@ export class PublicStorefrontService {
       qb.orderBy(
         `CASE WHEN EXISTS (
           SELECT 1 FROM product_variants pvd
-          INNER JOIN prices prd ON prd.variant_id = pvd.id
-          WHERE pvd.product_id = p.id AND prd."isActive" = true
-            AND prd."compareAtAmount" IS NOT NULL
-            AND prd."compareAtAmount"::numeric > prd.amount::numeric
+          CROSS JOIN LATERAL (
+            SELECT prd.amount::numeric AS amt, prd."compareAtAmount"::numeric AS cmp
+            FROM prices prd
+            WHERE prd.variant_id = pvd.id
+              AND prd."isActive" = true
+              AND prd."deletedAt" IS NULL
+              AND COALESCE(prd."effectiveFrom", prd."createdAt") <= NOW()
+            ORDER BY COALESCE(prd."effectiveFrom", prd."createdAt") DESC, prd."createdAt" DESC
+            LIMIT 1
+          ) effd
+          WHERE pvd.product_id = p.id AND pvd."isActive" = true
+            AND effd.cmp IS NOT NULL AND effd.cmp > effd.amt
         ) THEN 0 ELSE 1 END`,
         'ASC',
       )
@@ -572,10 +602,19 @@ export class PublicStorefrontService {
       countQb.andWhere(
         `EXISTS (
           SELECT 1 FROM product_variants pv2
-          INNER JOIN prices pr2 ON pr2.variant_id = pv2.id
-          WHERE pv2.product_id = p.id AND pv2."isActive" = true AND pr2."isActive" = true
-            AND pr2."compareAtAmount" IS NOT NULL
-            AND pr2."compareAtAmount"::numeric > pr2.amount::numeric
+          CROSS JOIN LATERAL (
+            SELECT pr2.amount::numeric AS amt, pr2."compareAtAmount"::numeric AS cmp
+            FROM prices pr2
+            WHERE pr2.variant_id = pv2.id
+              AND pr2."isActive" = true
+              AND pr2."deletedAt" IS NULL
+              AND COALESCE(pr2."effectiveFrom", pr2."createdAt") <= NOW()
+            ORDER BY COALESCE(pr2."effectiveFrom", pr2."createdAt") DESC, pr2."createdAt" DESC
+            LIMIT 1
+          ) eff2
+          WHERE pv2.product_id = p.id AND pv2."isActive" = true AND pv2."deletedAt" IS NULL
+            AND eff2.cmp IS NOT NULL
+            AND eff2.cmp > eff2.amt
         )`,
       );
     }
@@ -642,12 +681,34 @@ export class PublicStorefrontService {
     const priceQb = this.productRepo
       .createQueryBuilder('p')
       .innerJoin('p.variants', 'v')
-      .innerJoin('v.prices', 'pr')
-      .select('MIN(pr.amount::numeric)', 'min')
-      .addSelect('MAX(pr.amount::numeric)', 'max')
+      .select(
+        `MIN((
+          SELECT pr.amount::numeric
+          FROM prices pr
+          WHERE pr.variant_id = v.id
+            AND pr."isActive" = true
+            AND pr."deletedAt" IS NULL
+            AND COALESCE(pr."effectiveFrom", pr."createdAt") <= NOW()
+          ORDER BY COALESCE(pr."effectiveFrom", pr."createdAt") DESC, pr."createdAt" DESC
+          LIMIT 1
+        ))`,
+        'min',
+      )
+      .addSelect(
+        `MAX((
+          SELECT pr.amount::numeric
+          FROM prices pr
+          WHERE pr.variant_id = v.id
+            AND pr."isActive" = true
+            AND pr."deletedAt" IS NULL
+            AND COALESCE(pr."effectiveFrom", pr."createdAt") <= NOW()
+          ORDER BY COALESCE(pr."effectiveFrom", pr."createdAt") DESC, pr."createdAt" DESC
+          LIMIT 1
+        ))`,
+        'max',
+      )
       .where('p.status = :status', { status: ProductStatus.ACTIVE })
-      .andWhere('v.isActive = true')
-      .andWhere('pr.isActive = true');
+      .andWhere('v.isActive = true');
 
     if (categorySlugs?.length) {
       priceQb
@@ -1168,18 +1229,9 @@ export class PublicStorefrontService {
 
     let price: number | null = null;
     let compareAtPrice: number | null = null;
-    for (const v of product.variants || []) {
-      const active =
-        (v.prices || []).find((p: Price) => p.isActive) || v.prices?.[0];
-      if (!active) continue;
-      const amount = Number(active.amount);
-      if (price === null || amount < price) {
-        price = amount;
-        compareAtPrice = active.compareAtAmount
-          ? Number(active.compareAtAmount)
-          : null;
-      }
-    }
+    const minEff = minEffectiveVariantPrice(product.variants || []);
+    price = minEff.price;
+    compareAtPrice = minEff.compareAtPrice;
 
     let discountPercent: number | null = null;
     if (price != null && compareAtPrice != null && compareAtPrice > price) {
@@ -1252,17 +1304,15 @@ export class PublicStorefrontService {
           displayOrder: s.displayOrder,
         })),
       variants: activeVariants.map((v) => {
-        const active =
-          (v.prices || []).find((p: Price) => p.isActive) || v.prices?.[0];
+        const active = pickEffectivePrice(v.prices || []);
+        const amounts = priceAmounts(active);
         return {
           uuid: v.uuid,
           sku: v.sku,
           title: v.title,
           isDefault: v.isDefault,
-          price: active ? Number(active.amount) : null,
-          compareAtPrice: active?.compareAtAmount
-            ? Number(active.compareAtAmount)
-            : null,
+          price: amounts.amount,
+          compareAtPrice: amounts.compareAtAmount,
           attributes: (v.variantAttributeValues || []).map((vav: any) => ({
             name: vav.attributeValue?.attribute?.name ?? null,
             slug: vav.attributeValue?.attribute?.slug ?? null,

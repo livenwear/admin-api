@@ -11,6 +11,8 @@ import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
 import {
   ImpersonationGrant,
+  OtpChannel,
+  OtpPurpose,
   Role,
   RoleSlug,
   User,
@@ -117,23 +119,54 @@ export class CustomerAuthService {
     };
   }
 
+  /**
+   * Unified OTP entry: existing users log in; new phones get an account
+   * immediately (so the code is visible on the admin user detail page).
+   */
   async requestOtp(dto: CustomerOtpRequestDto) {
-    const existing = await this.userRepository.findOne({
+    let existing = await this.userRepository.findOne({
       where: { phone: dto.phone },
+      relations: ['userRoles', 'userRoles.role'],
     });
 
-    if (dto.purpose === 'login' && !existing) {
-      throw new NotFoundException('No account found for this phone number.');
-    }
-    if (dto.purpose === 'register' && existing) {
-      throw new ConflictException('Phone number already registered.');
+    let isNewUser = false;
+    if (!existing) {
+      existing = await this.userRepository.save(
+        this.userRepository.create({
+          phone: dto.phone,
+          password: null,
+          firstName: 'User',
+          lastName: '',
+          email: null,
+          isActive: true,
+          isVerified: false,
+          twoFactorEnabled: false,
+        }),
+      );
+      await this.assignCustomerRole(existing);
+      existing = await this.loadUser(existing.id);
+      isNewUser = true;
+    } else {
+      if (!existing.isActive) {
+        throw new ForbiddenException('Account is inactive.');
+      }
+      this.assertCustomerAudience(existing);
     }
 
-    const result = await this.otpService.requestOtp(dto.phone, dto.purpose);
+    const result = await this.otpService.requestOtp(
+      dto.phone,
+      isNewUser ? OtpPurpose.REGISTER : OtpPurpose.LOGIN,
+      OtpChannel.SMS,
+    );
+
     return {
       success: true,
-      message: 'OTP sent (stub — check server logs)',
-      data: result,
+      message: 'OTP sent (stub — check server logs or admin user OTP card)',
+      data: {
+        ...result,
+        isNewUser,
+        userUuid: existing.uuid,
+      },
     };
   }
 
@@ -141,7 +174,11 @@ export class CustomerAuthService {
     dto: CustomerOtpVerifyDto,
     meta?: { userAgent?: string; ipAddress?: string },
   ) {
-    const ok = this.otpService.verifyOtp(dto.phone, dto.code);
+    const ok = await this.otpService.verifyOtp(
+      dto.phone,
+      dto.code,
+      OtpChannel.SMS,
+    );
     if (!ok) {
       throw new BadRequestException('Invalid or expired OTP.');
     }
@@ -152,12 +189,13 @@ export class CustomerAuthService {
     });
 
     if (!user) {
+      // Safety net if request-step user creation was skipped somehow
       user = await this.userRepository.save(
         this.userRepository.create({
           phone: dto.phone,
           password: null,
-          firstName: dto.firstName || 'User',
-          lastName: dto.lastName || '',
+          firstName: dto.firstName?.trim() || 'User',
+          lastName: dto.lastName?.trim() || '',
           email: null,
           isActive: true,
           isVerified: true,
@@ -171,8 +209,12 @@ export class CustomerAuthService {
       if (!user.isActive) {
         throw new ForbiddenException('Account is inactive.');
       }
+      if (dto.firstName?.trim()) user.firstName = dto.firstName.trim();
+      if (dto.lastName?.trim()) user.lastName = dto.lastName.trim();
+      user.isVerified = true;
       user.lastLogin = new Date();
       await this.userRepository.save(user);
+      user = await this.loadUser(user.id);
     }
 
     const tokens = await this.tokenService.issueTokens(user, 'customer', meta);

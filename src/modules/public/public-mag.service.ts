@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { sanitizeBlogHtml } from 'src/common/utils/blog-html';
+import { minEffectiveVariantPrice } from 'src/common/pricing/effective-price';
 import {
   Post,
   PostCategory,
@@ -196,19 +197,9 @@ export class PublicMagService {
 
         let price: number | null = null;
         let compareAtPrice: number | null = null;
-        for (const v of (p as any).variants || []) {
-          const active =
-            (v.prices || []).find((pr: any) => pr.isActive) || v.prices?.[0];
-          if (!active) continue;
-          const amount = Number(active.amount);
-          if (Number.isNaN(amount)) continue;
-          if (price === null || amount < price) {
-            price = amount;
-            compareAtPrice = active.compareAtAmount
-              ? Number(active.compareAtAmount)
-              : null;
-          }
-        }
+        const minEff = minEffectiveVariantPrice((p as any).variants || []);
+        price = minEff.price;
+        compareAtPrice = minEff.compareAtPrice;
         let discountPercent: number | null = null;
         if (
           price != null &&

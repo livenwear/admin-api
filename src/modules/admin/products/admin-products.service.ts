@@ -31,9 +31,15 @@ import {
   Warehouse,
 } from 'src/entities';
 import { StorageService } from 'src/storage/storage.service';
+import {
+  pickEffectivePrice,
+  priceAmounts,
+  sameMoney,
+} from 'src/common/pricing/effective-price';
 import { Brackets, In, Repository } from 'typeorm';
 import {
   AdminCreateProductDto,
+  AdminCreateVariantPriceDto,
   AdminListProductsQueryDto,
   AdminUpdateProductDto,
   ProductFileAttachDto,
@@ -130,6 +136,16 @@ export class AdminProductsService {
         amazing: query.isAmazing === 'true',
       });
     }
+    if (query.isListedOnTorob === 'true' || query.isListedOnTorob === 'false') {
+      qb.andWhere('product.isListedOnTorob = :torob', {
+        torob: query.isListedOnTorob === 'true',
+      });
+    }
+    if (query.isListedOnEmalls === 'true' || query.isListedOnEmalls === 'false') {
+      qb.andWhere('product.isListedOnEmalls = :emalls', {
+        emalls: query.isListedOnEmalls === 'true',
+      });
+    }
     if (query.brandUuid) {
       qb.andWhere('brand.uuid = :brandUuid', { brandUuid: query.brandUuid });
     }
@@ -218,6 +234,8 @@ export class AdminProductsService {
         metaKeywords: dto.metaKeywords ?? null,
         isFeatured: dto.isFeatured ?? false,
         isAmazing: dto.isAmazing ?? false,
+        isListedOnTorob: dto.isListedOnTorob ?? false,
+        isListedOnEmalls: dto.isListedOnEmalls ?? false,
         isUnavailable: dto.isUnavailable ?? false,
         ratingAvg: String(dto.ratingAvg ?? 0),
         ratingCount: dto.ratingCount ?? 0,
@@ -260,6 +278,10 @@ export class AdminProductsService {
     if (dto.metaKeywords !== undefined) product.metaKeywords = dto.metaKeywords;
     if (dto.isFeatured !== undefined) product.isFeatured = dto.isFeatured;
     if (dto.isAmazing !== undefined) product.isAmazing = dto.isAmazing;
+    if (dto.isListedOnTorob !== undefined)
+      product.isListedOnTorob = dto.isListedOnTorob;
+    if (dto.isListedOnEmalls !== undefined)
+      product.isListedOnEmalls = dto.isListedOnEmalls;
     if (dto.isUnavailable !== undefined)
       product.isUnavailable = dto.isUnavailable;
     if (dto.ratingAvg !== undefined) product.ratingAvg = String(dto.ratingAvg);
@@ -594,96 +616,288 @@ export class AdminProductsService {
     replace = false,
   ) {
     const warehouse = await this.ensureDefaultWarehouse();
-    const preservedStock = new Map<
-      string,
-      { quantity: number; reservedQuantity: number }
-    >();
 
-    if (replace) {
-      const existing = await this.variantRepo.find({
-        where: { productId: product.id },
-        relations: ['inventories'],
-      });
-      for (const v of existing) {
-        const inv =
-          (v.inventories || []).find((i) => i.warehouseId === warehouse.id) ||
-          v.inventories?.[0];
-        if (inv) {
-          preservedStock.set(v.sku, {
-            quantity: inv.quantity,
-            reservedQuantity: inv.reservedQuantity,
-          });
-        }
-        await this.vavRepo.delete({ variantId: v.id });
-        await this.priceRepo.delete({ variantId: v.id });
-        await this.inventoryRepo.delete({ variantId: v.id });
-        await this.variantRepo.remove(v);
-      }
-    }
+    const existing = await this.variantRepo.find({
+      where: { productId: product.id },
+      relations: ['inventories', 'prices', 'variantAttributeValues'],
+    });
+    const bySku = new Map(existing.map((v) => [v.sku, v]));
+    const byUuid = new Map(existing.map((v) => [v.uuid, v]));
+    const seenIds = new Set<number>();
 
     let defaultSet = false;
     for (const dto of variants) {
       const isDefault = dto.isDefault ?? (!defaultSet && true);
       if (isDefault) defaultSet = true;
 
-      const variant = await this.variantRepo.save(
-        this.variantRepo.create({
-          product,
-          sku: dto.sku,
-          title: dto.title ?? null,
-          barcode: dto.barcode ?? null,
-          isDefault,
-          isActive: dto.isActive ?? true,
-          weight: dto.weight != null ? String(dto.weight) : null,
-          length: dto.length != null ? String(dto.length) : null,
-          width: dto.width != null ? String(dto.width) : null,
-          height: dto.height != null ? String(dto.height) : null,
-        }),
-      );
+      let variant =
+        (dto.uuid ? byUuid.get(dto.uuid) : undefined) || bySku.get(dto.sku);
 
-      await this.priceRepo.save(
-        this.priceRepo.create({
-          variant,
-          amount: String(dto.price),
-          compareAtAmount:
-            dto.compareAtPrice != null ? String(dto.compareAtPrice) : null,
-          currency: 'IRR',
-          isActive: true,
-        }),
-      );
+      if (variant) {
+        variant.sku = dto.sku;
+        variant.title = dto.title ?? null;
+        variant.barcode = dto.barcode ?? null;
+        variant.isDefault = isDefault;
+        variant.isActive = dto.isActive ?? true;
+        variant.weight = dto.weight != null ? String(dto.weight) : null;
+        variant.length = dto.length != null ? String(dto.length) : null;
+        variant.width = dto.width != null ? String(dto.width) : null;
+        variant.height = dto.height != null ? String(dto.height) : null;
+        variant = await this.variantRepo.save(variant);
+      } else {
+        variant = await this.variantRepo.save(
+          this.variantRepo.create({
+            product,
+            sku: dto.sku,
+            title: dto.title ?? null,
+            barcode: dto.barcode ?? null,
+            isDefault,
+            isActive: dto.isActive ?? true,
+            weight: dto.weight != null ? String(dto.weight) : null,
+            length: dto.length != null ? String(dto.length) : null,
+            width: dto.width != null ? String(dto.width) : null,
+            height: dto.height != null ? String(dto.height) : null,
+          }),
+        );
+      }
+      seenIds.add(variant.id);
 
-      const preserved = preservedStock.get(dto.sku);
-      const quantity =
-        dto.stockQuantity != null
-          ? dto.stockQuantity
-          : (preserved?.quantity ?? 0);
-      const reservedQuantity =
-        dto.stockQuantity != null ? 0 : (preserved?.reservedQuantity ?? 0);
+      const prices = await this.priceRepo.find({
+        where: { variantId: variant.id },
+        order: { createdAt: 'ASC' },
+      });
+      const current = pickEffectivePrice(prices);
+      const amounts = priceAmounts(current);
+      const priceChanged =
+        !current ||
+        !sameMoney(amounts.amount, dto.price) ||
+        !sameMoney(amounts.compareAtAmount, dto.compareAtPrice ?? null);
 
-      await this.inventoryRepo.save(
-        this.inventoryRepo.create({
-          warehouse,
-          variant,
-          quantity,
-          reservedQuantity,
-        }),
-      );
-
-      if (dto.attributeValueUuids?.length) {
-        const values = await this.attrValueRepo.find({
-          where: { uuid: In(dto.attributeValueUuids) },
-          relations: ['attribute'],
-        });
-        if (values.length !== dto.attributeValueUuids.length) {
-          throw new BadRequestException('Invalid attribute value uuid.');
+      if (priceChanged) {
+        const effectiveFrom = dto.priceEffectiveFrom
+          ? new Date(dto.priceEffectiveFrom)
+          : new Date();
+        if (Number.isNaN(effectiveFrom.getTime())) {
+          throw new BadRequestException('Invalid priceEffectiveFrom.');
         }
-        for (const value of values) {
-          await this.vavRepo.save(
-            this.vavRepo.create({ variant, attributeValue: value }),
+        await this.priceRepo.save(
+          this.priceRepo.create({
+            variant,
+            amount: String(dto.price),
+            compareAtAmount:
+              dto.compareAtPrice != null ? String(dto.compareAtPrice) : null,
+            currency: 'IRR',
+            isActive: true,
+            effectiveFrom,
+            note: null,
+          }),
+        );
+      }
+
+      const inv =
+        (variant.inventories || []).find((i) => i.warehouseId === warehouse.id) ||
+        (variant.inventories || [])[0];
+
+      if (dto.stockQuantity != null) {
+        if (inv) {
+          inv.quantity = dto.stockQuantity;
+          inv.reservedQuantity = 0;
+          await this.inventoryRepo.save(inv);
+        } else {
+          await this.inventoryRepo.save(
+            this.inventoryRepo.create({
+              warehouse,
+              variant,
+              quantity: dto.stockQuantity,
+              reservedQuantity: 0,
+            }),
           );
+        }
+      } else if (!inv) {
+        await this.inventoryRepo.save(
+          this.inventoryRepo.create({
+            warehouse,
+            variant,
+            quantity: 0,
+            reservedQuantity: 0,
+          }),
+        );
+      }
+
+      if (dto.attributeValueUuids) {
+        await this.vavRepo.delete({ variantId: variant.id });
+        if (dto.attributeValueUuids.length) {
+          const values = await this.attrValueRepo.find({
+            where: { uuid: In(dto.attributeValueUuids) },
+            relations: ['attribute'],
+          });
+          if (values.length !== dto.attributeValueUuids.length) {
+            throw new BadRequestException('Invalid attribute value uuid.');
+          }
+          for (const value of values) {
+            await this.vavRepo.save(
+              this.vavRepo.create({ variant, attributeValue: value }),
+            );
+          }
         }
       }
     }
+
+    if (replace) {
+      for (const v of existing) {
+        if (seenIds.has(v.id)) continue;
+        v.isActive = false;
+        await this.variantRepo.save(v);
+      }
+    }
+  }
+
+  async listVariantPrices(productUuid: string, variantUuid: string) {
+    const product = await this.productRepo.findOne({
+      where: { uuid: productUuid },
+    });
+    if (!product) throw new NotFoundException('Product not found.');
+
+    const variant = await this.variantRepo.findOne({
+      where: { uuid: variantUuid, productId: product.id },
+    });
+    if (!variant) throw new NotFoundException('Variant not found.');
+
+    const prices = await this.priceRepo
+      .createQueryBuilder('p')
+      .where('p.variantId = :vid', { vid: variant.id })
+      .andWhere('p.deletedAt IS NULL')
+      .orderBy('COALESCE(p.effectiveFrom, p.createdAt)', 'DESC')
+      .addOrderBy('p.createdAt', 'DESC')
+      .getMany();
+
+    const now = new Date();
+    const effective = pickEffectivePrice(prices, now);
+    const mapped = prices.map((p) => this.mapPriceRow(p, effective?.uuid === p.uuid, now));
+
+    return {
+      success: true,
+      data: {
+        variant: {
+          uuid: variant.uuid,
+          sku: variant.sku,
+          title: variant.title,
+        },
+        current: effective
+          ? this.mapPriceRow(effective, true, now)
+          : null,
+        prices: mapped,
+      },
+    };
+  }
+
+  async addVariantPrice(
+    productUuid: string,
+    variantUuid: string,
+    dto: AdminCreateVariantPriceDto,
+  ) {
+    const product = await this.productRepo.findOne({
+      where: { uuid: productUuid },
+    });
+    if (!product) throw new NotFoundException('Product not found.');
+
+    const variant = await this.variantRepo.findOne({
+      where: { uuid: variantUuid, productId: product.id },
+    });
+    if (!variant) throw new NotFoundException('Variant not found.');
+
+    if (dto.compareAtAmount != null && dto.compareAtAmount < dto.amount) {
+      throw new BadRequestException(
+        'compareAtAmount must be greater than or equal to amount.',
+      );
+    }
+
+    const effectiveFrom = dto.effectiveFrom
+      ? new Date(dto.effectiveFrom)
+      : new Date();
+    if (Number.isNaN(effectiveFrom.getTime())) {
+      throw new BadRequestException('Invalid effectiveFrom.');
+    }
+
+    const saved = await this.priceRepo.save(
+      this.priceRepo.create({
+        variant,
+        amount: String(dto.amount),
+        compareAtAmount:
+          dto.compareAtAmount != null ? String(dto.compareAtAmount) : null,
+        currency: 'IRR',
+        isActive: true,
+        effectiveFrom,
+        note: dto.note?.trim() || null,
+      }),
+    );
+
+    const list = await this.listVariantPrices(productUuid, variantUuid);
+    return {
+      success: true,
+      message: 'Price entry created',
+      data: {
+        ...list.data,
+        createdUuid: saved.uuid,
+      },
+    };
+  }
+
+  async voidVariantPrice(
+    productUuid: string,
+    variantUuid: string,
+    priceUuid: string,
+  ) {
+    const product = await this.productRepo.findOne({
+      where: { uuid: productUuid },
+    });
+    if (!product) throw new NotFoundException('Product not found.');
+
+    const variant = await this.variantRepo.findOne({
+      where: { uuid: variantUuid, productId: product.id },
+    });
+    if (!variant) throw new NotFoundException('Variant not found.');
+
+    const price = await this.priceRepo.findOne({
+      where: { uuid: priceUuid, variantId: variant.id },
+    });
+    if (!price) throw new NotFoundException('Price entry not found.');
+
+    price.isActive = false;
+    await this.priceRepo.save(price);
+
+    return this.listVariantPrices(productUuid, variantUuid).then((list) => ({
+      success: true,
+      message: 'Price entry voided',
+      data: list.data,
+    }));
+  }
+
+  private mapPriceRow(p: Price, isCurrent: boolean, now: Date) {
+    const from = p.effectiveFrom ? new Date(p.effectiveFrom) : null;
+    const status: 'current' | 'scheduled' | 'historical' | 'voided' =
+      !p.isActive
+        ? 'voided'
+        : isCurrent
+          ? 'current'
+          : from && from.getTime() > now.getTime()
+            ? 'scheduled'
+            : 'historical';
+
+    return {
+      uuid: p.uuid,
+      amount: Number(p.amount),
+      compareAtAmount: p.compareAtAmount != null ? Number(p.compareAtAmount) : null,
+      currency: p.currency,
+      effectiveFrom: p.effectiveFrom
+        ? new Date(p.effectiveFrom).toISOString()
+        : null,
+      createdAt: p.createdAt ? new Date(p.createdAt).toISOString() : null,
+      note: p.note,
+      isActive: p.isActive,
+      status,
+      isCurrent,
+    };
   }
 
   private async syncImages(
@@ -768,7 +982,8 @@ export class AdminProductsService {
     );
 
     const variants = (product.variants || []).map((v) => {
-      const price = (v.prices || []).find((p: Price) => p.isActive) || v.prices?.[0];
+      const price = pickEffectivePrice(v.prices || []);
+      const amounts = priceAmounts(price);
       const inv = (v.inventories || [])[0];
       return {
         uuid: v.uuid,
@@ -783,11 +998,9 @@ export class AdminProductsService {
         height: v.height,
         stockQuantity: inv?.quantity ?? 0,
         reservedQuantity: inv?.reservedQuantity ?? 0,
-        price: price ? Number(price.amount) : null,
-        compareAtPrice: price?.compareAtAmount
-          ? Number(price.compareAtAmount)
-          : null,
-        currency: price?.currency ?? 'IRR',
+        price: amounts.amount,
+        compareAtPrice: amounts.compareAtAmount,
+        currency: amounts.currency,
         attributes: (v.variantAttributeValues || []).map((vav: any) => ({
           attributeUuid: vav.attributeValue?.attribute?.uuid,
           attributeName: vav.attributeValue?.attribute?.name,
@@ -812,6 +1025,8 @@ export class AdminProductsService {
       status: product.status,
       isFeatured: product.isFeatured,
       isAmazing: product.isAmazing,
+      isListedOnTorob: Boolean(product.isListedOnTorob),
+      isListedOnEmalls: Boolean(product.isListedOnEmalls),
       isUnavailable: Boolean(product.isUnavailable),
       ratingAvg: Number(product.ratingAvg || 0),
       ratingCount: product.ratingCount || 0,

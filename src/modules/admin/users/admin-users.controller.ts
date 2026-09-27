@@ -54,6 +54,14 @@ export class AdminUsersController {
     return this.adminUsersService.getAddresses(uuid);
   }
 
+  @Get(':uuid/otp-codes')
+  @ApiOperation({
+    summary: 'Latest OTP + delivery history for this user (support/debug)',
+  })
+  getOtpCodes(@Param('uuid', ParseUUIDPipe) uuid: string) {
+    return this.adminUsersService.getOtpCodes(uuid);
+  }
+
   @Get(':uuid')
   @ApiOperation({ summary: 'Get user details' })
   getOne(@Param('uuid', ParseUUIDPipe) uuid: string) {

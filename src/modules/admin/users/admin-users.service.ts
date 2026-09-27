@@ -19,6 +19,7 @@ import {
   Address,
 } from 'src/entities';
 import { TokenService } from 'src/modules/auth/shared/token.service';
+import { OtpService } from 'src/modules/auth/shared/otp.service';
 import { CustomerWishlistService } from 'src/modules/customer/customer-wishlist.service';
 import { Brackets, Repository } from 'typeorm';
 import {
@@ -41,6 +42,7 @@ export class AdminUsersService {
     @InjectRepository(Address)
     private readonly addressRepository: Repository<Address>,
     private readonly tokenService: TokenService,
+    private readonly otpService: OtpService,
     private readonly configService: ConfigService,
     private readonly wishlistService: CustomerWishlistService,
   ) {}
@@ -170,6 +172,12 @@ export class AdminUsersService {
         })),
       },
     };
+  }
+
+  async getOtpCodes(uuid: string) {
+    const user = await this.findByUuidOrFail(uuid);
+    const data = await this.otpService.listForUser(user);
+    return { success: true, data };
   }
 
   async create(dto: AdminCreateUserDto, actor: User) {

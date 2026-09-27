@@ -71,6 +71,20 @@ export class Product extends AbstractEntity {
   isAmazing: boolean;
 
   /**
+   * When true, product is included in Torob Product API v3 feed
+   * (POST /api/v1/torob_api/v3/products).
+   */
+  @Column({ type: 'boolean', default: false })
+  isListedOnTorob: boolean;
+
+  /**
+   * When true, product is included in Emalls extraction API feed
+   * (POST /api/v1/emalls_ext/v1/products).
+   */
+  @Column({ type: 'boolean', default: false })
+  isListedOnEmalls: boolean;
+
+  /**
    * Sales tag: product marked unavailable for checkout/payment.
    * Independent of warehouse inventory — prices still show; cart still works.
    */

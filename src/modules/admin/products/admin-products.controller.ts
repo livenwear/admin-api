@@ -21,6 +21,7 @@ import {
 import { AdminProductsService } from './admin-products.service';
 import {
   AdminCreateProductDto,
+  AdminCreateVariantPriceDto,
   AdminListProductsQueryDto,
   AdminUpdateProductDto,
   ProductImageDto,
@@ -45,6 +46,35 @@ export class AdminProductsController {
   @Get(':uuid')
   getOne(@Param('uuid', ParseUUIDPipe) uuid: string) {
     return this.productsService.getOne(uuid);
+  }
+
+  @Get(':uuid/variants/:variantUuid/prices')
+  @ApiOperation({ summary: 'List price schedule / history for a variant' })
+  listVariantPrices(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Param('variantUuid', ParseUUIDPipe) variantUuid: string,
+  ) {
+    return this.productsService.listVariantPrices(uuid, variantUuid);
+  }
+
+  @Post(':uuid/variants/:variantUuid/prices')
+  @ApiOperation({ summary: 'Append a price entry (now or scheduled)' })
+  addVariantPrice(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Param('variantUuid', ParseUUIDPipe) variantUuid: string,
+    @Body() dto: AdminCreateVariantPriceDto,
+  ) {
+    return this.productsService.addVariantPrice(uuid, variantUuid, dto);
+  }
+
+  @Delete(':uuid/variants/:variantUuid/prices/:priceUuid')
+  @ApiOperation({ summary: 'Void a price entry (keeps row for audit)' })
+  voidVariantPrice(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Param('variantUuid', ParseUUIDPipe) variantUuid: string,
+    @Param('priceUuid', ParseUUIDPipe) priceUuid: string,
+  ) {
+    return this.productsService.voidVariantPrice(uuid, variantUuid, priceUuid);
   }
 
   @Post()

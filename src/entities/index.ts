@@ -6,6 +6,7 @@ import { RolePermission } from './auth/role-permission.entity';
 import { RefreshToken } from './auth/refresh-token.entity';
 import { AuditLog } from './auth/audit-log.entity';
 import { ImpersonationGrant } from './auth/impersonation-grant.entity';
+import { OtpDelivery } from './auth/otp-delivery.entity';
 
 import { Category } from './catalog/category.entity';
 import { Brand } from './catalog/brand.entity';
@@ -92,6 +93,7 @@ export const ALL_ENTITIES = [
   RefreshToken,
   AuditLog,
   ImpersonationGrant,
+  OtpDelivery,
   // Catalog
   Category,
   Brand,
@@ -181,6 +183,7 @@ export {
   RefreshToken,
   AuditLog,
   ImpersonationGrant,
+  OtpDelivery,
   Category,
   Brand,
   Collection,

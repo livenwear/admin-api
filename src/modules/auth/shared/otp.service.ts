@@ -1,23 +1,46 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
 import { randomInt } from 'crypto';
+import { OtpChannel, OtpDelivery, OtpPurpose, User } from 'src/entities';
+import { In, Repository } from 'typeorm';
 
-interface OtpRecord {
+interface ActiveOtp {
   code: string;
   expiresAt: Date;
-  purpose: 'login' | 'register';
+  purpose: OtpPurpose;
+  deliveryId: number;
 }
 
+export type OtpDeliveryView = {
+  uuid: string;
+  code: string;
+  channel: OtpChannel;
+  destination: string;
+  purpose: OtpPurpose;
+  status: 'active' | 'expired' | 'consumed';
+  expiresAt: string;
+  consumedAt: string | null;
+  sentAt: string;
+};
+
 /**
- * Temporary in-memory OTP store.
- * Replace with Redis / DB + real SMS provider later.
+ * OTP issue + verify.
+ * Active codes stay in memory for fast verify; every send is persisted
+ * to `otp_deliveries` for admin debugging / support.
  */
 @Injectable()
 export class OtpService {
   private readonly logger = new Logger(OtpService.name);
-  private readonly store = new Map<string, OtpRecord>();
+  private readonly store = new Map<string, ActiveOtp>();
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    @InjectRepository(OtpDelivery)
+    private readonly deliveryRepo: Repository<OtpDelivery>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+  ) {}
 
   private get ttlSeconds(): number {
     return Number(this.configService.get<string>('OTP_EXPIRES_SECONDS', '120'));
@@ -33,42 +56,148 @@ export class OtpService {
     return String(randomInt(min, max));
   }
 
+  private storeKey(channel: OtpChannel, destination: string) {
+    return `${channel}:${destination.trim()}`;
+  }
+
   /**
-   * Creates OTP and "sends" SMS.
-   * SMS provider is NOT wired yet — code is logged only.
+   * Creates OTP, persists delivery row, and "sends" via stub channel.
    */
   async requestOtp(
-    phone: string,
-    purpose: 'login' | 'register',
+    destination: string,
+    purpose: OtpPurpose,
+    channel: OtpChannel = OtpChannel.SMS,
   ): Promise<{ expiresIn: number; debugNote: string }> {
+    const dest = destination.trim();
     const code = this.generateCode();
     const expiresAt = new Date(Date.now() + this.ttlSeconds * 1000);
-    this.store.set(phone, { code, expiresAt, purpose });
 
-    // ---------------------------------------------------------------------------
-    // TODO: integrate real SMS provider (Kavenegar / Ghasedak / etc.)
-    // await this.smsProvider.send({ to: phone, template: 'otp', token: code });
-    // ---------------------------------------------------------------------------
-    this.logger.log(
-      `[SMS-STUB] purpose=${purpose} phone=${phone} otp=${code} expiresIn=${this.ttlSeconds}s`,
+    let userId: number | null = null;
+    if (channel === OtpChannel.SMS) {
+      const user = await this.userRepo.findOne({ where: { phone: dest } });
+      userId = user?.id ?? null;
+    } else {
+      const user = await this.userRepo.findOne({ where: { email: dest } });
+      userId = user?.id ?? null;
+    }
+
+    const delivery = await this.deliveryRepo.save(
+      this.deliveryRepo.create({
+        destination: dest,
+        channel,
+        code,
+        purpose,
+        expiresAt,
+        consumedAt: null,
+        userId,
+      }),
     );
+
+    this.store.set(this.storeKey(channel, dest), {
+      code,
+      expiresAt,
+      purpose,
+      deliveryId: delivery.id,
+    });
+
+    if (channel === OtpChannel.SMS) {
+      // TODO: Kavenegar / Ghasedak
+      this.logger.log(
+        `[SMS-STUB] purpose=${purpose} phone=${dest} otp=${code} expiresIn=${this.ttlSeconds}s`,
+      );
+    } else {
+      // TODO: email provider
+      this.logger.log(
+        `[EMAIL-STUB] purpose=${purpose} email=${dest} otp=${code} expiresIn=${this.ttlSeconds}s`,
+      );
+    }
 
     return {
       expiresIn: this.ttlSeconds,
       debugNote:
-        'SMS provider not configured — OTP printed to server logs only.',
+        channel === OtpChannel.SMS
+          ? 'SMS provider not configured — OTP printed to server logs only.'
+          : 'Email provider not configured — OTP printed to server logs only.',
     };
   }
 
-  verifyOtp(phone: string, code: string): boolean {
-    const record = this.store.get(phone);
+  async verifyOtp(
+    destination: string,
+    code: string,
+    channel: OtpChannel = OtpChannel.SMS,
+  ): Promise<boolean> {
+    const key = this.storeKey(channel, destination.trim());
+    const record = this.store.get(key);
     if (!record) return false;
     if (record.expiresAt < new Date()) {
-      this.store.delete(phone);
+      this.store.delete(key);
       return false;
     }
     if (record.code !== code) return false;
-    this.store.delete(phone);
+
+    this.store.delete(key);
+    await this.deliveryRepo.update(
+      { id: record.deliveryId },
+      { consumedAt: new Date() },
+    );
     return true;
+  }
+
+  async listForUser(
+    user: {
+      id: number;
+      phone?: string | null;
+      email?: string | null;
+    },
+    limit = 50,
+  ): Promise<{ latest: OtpDeliveryView | null; history: OtpDeliveryView[] }> {
+    const destinations: string[] = [];
+    if (user.phone?.trim()) destinations.push(user.phone.trim());
+    if (user.email?.trim()) destinations.push(user.email.trim());
+
+    const where =
+      destinations.length > 0
+        ? [{ userId: user.id }, { destination: In(destinations) }]
+        : [{ userId: user.id }];
+
+    const rows = await this.deliveryRepo.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: Math.min(Math.max(limit, 1), 100),
+    });
+
+    // Dedupe by uuid (userId + destination overlap)
+    const seen = new Set<string>();
+    const unique = rows.filter((r) => {
+      if (seen.has(r.uuid)) return false;
+      seen.add(r.uuid);
+      return true;
+    });
+
+    const now = Date.now();
+    const mapped: OtpDeliveryView[] = unique.map((r) => {
+      const expired = r.expiresAt.getTime() < now;
+      const consumed = Boolean(r.consumedAt);
+      let status: OtpDeliveryView['status'] = 'active';
+      if (consumed) status = 'consumed';
+      else if (expired) status = 'expired';
+
+      return {
+        uuid: r.uuid,
+        code: r.code,
+        channel: r.channel,
+        destination: r.destination,
+        purpose: r.purpose,
+        status,
+        expiresAt: r.expiresAt.toISOString(),
+        consumedAt: r.consumedAt ? r.consumedAt.toISOString() : null,
+        sentAt: r.createdAt.toISOString(),
+      };
+    });
+
+    return {
+      latest: mapped[0] ?? null,
+      history: mapped,
+    };
   }
 }

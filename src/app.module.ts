@@ -13,6 +13,8 @@ import { PublicModule } from './modules/public/public.module';
 import { StorageModule } from './storage/storage.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { TorobModule } from './modules/torob/torob.module';
+import { EmallsModule } from './modules/emalls/emalls.module';
 
 @Module({
   imports: [
@@ -41,6 +43,8 @@ import { OrdersModule } from './modules/orders/orders.module';
     PublicModule,
     ChatModule,
     OrdersModule,
+    TorobModule,
+    EmallsModule,
   ],
   controllers: [AppController],
   providers: [

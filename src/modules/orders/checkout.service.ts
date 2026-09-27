@@ -8,6 +8,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
+  pickEffectivePrice,
+  priceAmounts,
+} from 'src/common/pricing/effective-price';
+import {
   Address,
   Cart,
   CartItem,
@@ -252,13 +256,10 @@ export class CheckoutService {
     const lines = items.map((item) => {
       const variant = item.variant as ProductVariant;
       const product = variant.product as Product;
-      const price =
-        (variant.prices || []).find((p: Price) => p.isActive) ||
-        variant.prices?.[0];
-      const unitPrice = price ? Number(price.amount) : 0;
-      const compareAt = price?.compareAtAmount
-        ? Number(price.compareAtAmount)
-        : null;
+      const price = pickEffectivePrice(variant.prices || []);
+      const amounts = priceAmounts(price);
+      const unitPrice = amounts.amount ?? 0;
+      const compareAt = amounts.compareAtAmount;
       const inv = (variant.inventories || [])[0];
       const available = inv
         ? Math.max(0, inv.quantity - inv.reservedQuantity)

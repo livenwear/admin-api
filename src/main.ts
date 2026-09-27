@@ -21,17 +21,18 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (
-      configService.get<string>('CORS_ORIGIN') || 'http://localhost:5173'
+      configService.get<string>('CORS_ORIGIN') ||
+      'http://localhost:5173,http://localhost:3000,https://livenmode.ir,https://www.livenmode.ir,https://console.livenmode.ir'
     )
       .split(',')
       .map((o) => o.trim())
       .filter(Boolean),
     methods:
       configService.get<string>('CORS_METHODS') ||
-      'GET,HEAD,PUT,PATCH,POST,DELETE',
+      'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders:
       configService.get<string>('CORS_HEADERS') ||
-      'Content-Type,Authorization,X-Guest-Cart-Token',
+      'Content-Type,Authorization,X-Guest-Cart-Token,X-Torob-Token,X-Torob-Token-Version',
     credentials: true,
   });
 

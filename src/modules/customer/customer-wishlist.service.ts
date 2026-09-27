@@ -4,6 +4,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
+  minEffectiveVariantPrice,
+} from 'src/common/pricing/effective-price';
+import {
   Product,
   ProductImage,
   ProductRelated,
@@ -163,19 +166,9 @@ export class CustomerWishlistService {
 
     let price: number | null = null;
     let compareAtPrice: number | null = null;
-    for (const v of (product as any)?.variants || []) {
-      const active =
-        (v.prices || []).find((p: { isActive?: boolean }) => p.isActive) ||
-        v.prices?.[0];
-      if (!active) continue;
-      const amount = Number(active.amount);
-      if (price === null || amount < price) {
-        price = amount;
-        compareAtPrice = active.compareAtAmount
-          ? Number(active.compareAtAmount)
-          : null;
-      }
-    }
+    const minEff = minEffectiveVariantPrice((product as any)?.variants || []);
+    price = minEff.price;
+    compareAtPrice = minEff.compareAtPrice;
 
     let discountPercent: number | null = null;
     if (price != null && compareAtPrice != null && compareAtPrice > price) {

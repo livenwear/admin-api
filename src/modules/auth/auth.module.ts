@@ -2,7 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { RefreshToken, Role, User, UserRoleEntity, ImpersonationGrant } from 'src/entities';
+import { RefreshToken, Role, User, UserRoleEntity, ImpersonationGrant, OtpDelivery } from 'src/entities';
 import { AdminAuthController } from './admin/admin-auth.controller';
 import { AdminAuthService } from './admin/admin-auth.service';
 import { CustomerAuthController } from './customer/customer-auth.controller';
@@ -21,6 +21,7 @@ import { TokenService } from './shared/token.service';
       UserRoleEntity,
       RefreshToken,
       ImpersonationGrant,
+      OtpDelivery,
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
