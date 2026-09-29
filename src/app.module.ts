@@ -15,6 +15,7 @@ import { ChatModule } from './modules/chat/chat.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { TorobModule } from './modules/torob/torob.module';
 import { EmallsModule } from './modules/emalls/emalls.module';
+import { SmsModule } from './modules/sms/sms.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { EmallsModule } from './modules/emalls/emalls.module';
     DatabaseModule,
     SeedModule,
     StorageModule,
+    SmsModule,
     AuthModule,
     AdminModule,
     CustomerModule,

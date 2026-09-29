@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomInt } from 'crypto';
 import { OtpChannel, OtpDelivery, OtpPurpose, User } from 'src/entities';
+import { SmsService } from 'src/modules/sms/sms.service';
 import { In, Repository } from 'typeorm';
 
 interface ActiveOtp {
@@ -28,6 +29,7 @@ export type OtpDeliveryView = {
  * OTP issue + verify.
  * Active codes stay in memory for fast verify; every send is persisted
  * to `otp_deliveries` for admin debugging / support.
+ * SMS delivery goes through SmsService (provider-swappable).
  */
 @Injectable()
 export class OtpService {
@@ -36,6 +38,7 @@ export class OtpService {
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly smsService: SmsService,
     @InjectRepository(OtpDelivery)
     private readonly deliveryRepo: Repository<OtpDelivery>,
     @InjectRepository(User)
@@ -61,13 +64,13 @@ export class OtpService {
   }
 
   /**
-   * Creates OTP, persists delivery row, and "sends" via stub channel.
+   * Creates OTP, persists delivery row, and sends via configured SMS provider.
    */
   async requestOtp(
     destination: string,
     purpose: OtpPurpose,
     channel: OtpChannel = OtpChannel.SMS,
-  ): Promise<{ expiresIn: number; debugNote: string }> {
+  ): Promise<{ expiresIn: number; debugNote: string; sent: boolean }> {
     const dest = destination.trim();
     const code = this.generateCode();
     const expiresAt = new Date(Date.now() + this.ttlSeconds * 1000);
@@ -100,24 +103,44 @@ export class OtpService {
       deliveryId: delivery.id,
     });
 
+    let sent = false;
+    let debugNote = '';
+
     if (channel === OtpChannel.SMS) {
-      // TODO: Kavenegar / Ghasedak
-      this.logger.log(
-        `[SMS-STUB] purpose=${purpose} phone=${dest} otp=${code} expiresIn=${this.ttlSeconds}s`,
-      );
+      const result = await this.smsService.sendOtp({
+        phone: dest,
+        code,
+        purpose,
+      });
+      sent = result.status === 'sent';
+      if (sent) {
+        debugNote =
+          result.provider === 'console'
+            ? 'SMS provider=console — OTP logged on server (not sent to phone).'
+            : `OTP SMS sent via ${result.provider}.`;
+      } else {
+        this.store.delete(this.storeKey(channel, dest));
+        this.logger.error(
+          `OTP SMS failed provider=${result.provider} status=${result.providerStatus ?? '-'} msg=${result.message ?? '-'}`,
+        );
+        throw new BadRequestException(
+          result.message ||
+            'ارسال پیامک ناموفق بود. چند لحظه دیگر دوباره تلاش کنید.',
+        );
+      }
     } else {
-      // TODO: email provider
       this.logger.log(
         `[EMAIL-STUB] purpose=${purpose} email=${dest} otp=${code} expiresIn=${this.ttlSeconds}s`,
       );
+      debugNote =
+        'Email provider not configured — OTP printed to server logs only.';
+      sent = false;
     }
 
     return {
       expiresIn: this.ttlSeconds,
-      debugNote:
-        channel === OtpChannel.SMS
-          ? 'SMS provider not configured — OTP printed to server logs only.'
-          : 'Email provider not configured — OTP printed to server logs only.',
+      debugNote,
+      sent,
     };
   }
 
@@ -166,7 +189,6 @@ export class OtpService {
       take: Math.min(Math.max(limit, 1), 100),
     });
 
-    // Dedupe by uuid (userId + destination overlap)
     const seen = new Set<string>();
     const unique = rows.filter((r) => {
       if (seen.has(r.uuid)) return false;

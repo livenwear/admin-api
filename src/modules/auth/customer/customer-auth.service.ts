@@ -195,7 +195,7 @@ export class CustomerAuthService {
 
     return {
       success: true,
-      message: 'OTP sent (stub — check server logs or admin user OTP card)',
+      message: 'کد تایید پیامک شد',
       data: {
         ...result,
         isNewUser: isNewUser || !existing.isVerified,
@@ -300,7 +300,7 @@ export class CustomerAuthService {
       data: {
         expiresIn: otp.expiresIn,
         debugNote: otp.debugNote,
-        sent: true,
+        sent: otp.sent,
         userUuid: user.uuid,
       },
     };

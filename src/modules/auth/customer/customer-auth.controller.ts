@@ -39,7 +39,7 @@ export class CustomerAuthController {
 
   @Post('otp/request')
   @ApiOperation({
-    summary: 'Request SMS OTP (stub — OTP is logged on server)',
+    summary: 'Request SMS OTP (Kavenegar VerifyLookup / Iran CRA template)',
   })
   requestOtp(@Body() dto: CustomerOtpRequestDto) {
     return this.customerAuthService.requestOtp(dto);
