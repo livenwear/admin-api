@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomInt } from 'crypto';
 import { OtpChannel, OtpDelivery, OtpPurpose, User } from 'src/entities';
+import { AppSettingsService } from 'src/modules/settings/app-settings.service';
 import { SmsService } from 'src/modules/sms/sms.service';
 import { In, Repository } from 'typeorm';
 
@@ -39,6 +40,7 @@ export class OtpService {
   constructor(
     private readonly configService: ConfigService,
     private readonly smsService: SmsService,
+    private readonly appSettings: AppSettingsService,
     @InjectRepository(OtpDelivery)
     private readonly deliveryRepo: Repository<OtpDelivery>,
     @InjectRepository(User)
@@ -107,26 +109,37 @@ export class OtpService {
     let debugNote = '';
 
     if (channel === OtpChannel.SMS) {
-      const result = await this.smsService.sendOtp({
-        phone: dest,
-        code,
-        purpose,
-      });
-      sent = result.status === 'sent';
-      if (sent) {
+      const smsEnabled = await this.appSettings.isSmsSendingEnabled();
+      if (!smsEnabled) {
+        // Feature flag off: behave as success for the customer, skip provider cost.
+        this.logger.warn(
+          `[SMS-FLAG-OFF] OTP issued but not sent phone=${dest} purpose=${purpose} code=${code}`,
+        );
+        sent = true;
         debugNote =
-          result.provider === 'console'
-            ? 'SMS provider=console — OTP logged on server (not sent to phone).'
-            : `OTP SMS sent via ${result.provider}.`;
+          'ارسال پیامک از تنظیمات ادمین خاموش است — کد فقط در پنل ادمین قابل مشاهده است.';
       } else {
-        this.store.delete(this.storeKey(channel, dest));
-        this.logger.error(
-          `OTP SMS failed provider=${result.provider} status=${result.providerStatus ?? '-'} msg=${result.message ?? '-'}`,
-        );
-        throw new BadRequestException(
-          result.message ||
-            'ارسال پیامک ناموفق بود. چند لحظه دیگر دوباره تلاش کنید.',
-        );
+        const result = await this.smsService.sendOtp({
+          phone: dest,
+          code,
+          purpose,
+        });
+        sent = result.status === 'sent';
+        if (sent) {
+          debugNote =
+            result.provider === 'console'
+              ? 'SMS provider=console — OTP logged on server (not sent to phone).'
+              : `OTP SMS sent via ${result.provider}.`;
+        } else {
+          this.store.delete(this.storeKey(channel, dest));
+          this.logger.error(
+            `OTP SMS failed provider=${result.provider} status=${result.providerStatus ?? '-'} msg=${result.message ?? '-'}`,
+          );
+          throw new BadRequestException(
+            result.message ||
+              'ارسال پیامک ناموفق بود. چند لحظه دیگر دوباره تلاش کنید.',
+          );
+        }
       }
     } else {
       this.logger.log(

@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { CustomExceptionFilter } from './filters/custom-exception.filter';
@@ -17,7 +17,9 @@ async function bootstrap() {
   );
 
   const configService = app.get(ConfigService);
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: [{ path: 'mylog', method: RequestMethod.GET }],
+  });
 
   app.enableCors({
     origin: (
@@ -54,6 +56,7 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`Server is running on http://localhost:${port}`);
   console.log(`Swagger: http://localhost:${port}/api`);
+  console.log(`Live logs: http://localhost:${port}/mylog`);
 }
 
 bootstrap();

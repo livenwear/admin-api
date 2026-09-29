@@ -323,6 +323,7 @@ build_api() {
 start_api() {
   log "Starting/reloading app with PM2"
   cd "$REPO_DIR"
+  mkdir -p "$REPO_DIR/logs"
   PM2_APP_NAME="$PM2_APP_NAME" pm2 startOrReload ecosystem.config.cjs --update-env
   pm2 save
 }

@@ -16,6 +16,8 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { TorobModule } from './modules/torob/torob.module';
 import { EmallsModule } from './modules/emalls/emalls.module';
 import { SmsModule } from './modules/sms/sms.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { MylogController } from './mylog.controller';
 
 @Module({
   imports: [
@@ -39,6 +41,7 @@ import { SmsModule } from './modules/sms/sms.module';
     SeedModule,
     StorageModule,
     SmsModule,
+    SettingsModule,
     AuthModule,
     AdminModule,
     CustomerModule,
@@ -48,7 +51,7 @@ import { SmsModule } from './modules/sms/sms.module';
     TorobModule,
     EmallsModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, MylogController],
   providers: [
     AppService,
     {

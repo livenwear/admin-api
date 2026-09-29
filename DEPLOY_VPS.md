@@ -75,6 +75,11 @@ MINIO_CONSOLE_URL=https://minio-console.livenmode.ir
 MINIO_BUCKET_IMAGES=liven-images
 MINIO_BUCKET_FILES=liven-files
 MINIO_BUCKET_TEMP=liven-temp
+
+SMS_PROVIDER=kavenegar
+KAVENEGAR_API_KEY=CHANGE_ME
+KAVENEGAR_OTP_TEMPLATE=liven-verification-code
+OTP_LENGTH=6
 ```
 
 Deploy script forces `MINIO_ENDPOINT=127.0.0.1`, `MINIO_PORT=9010`, `MINIO_USE_SSL=false`, `DATABASE_HOST=127.0.0.1`.
