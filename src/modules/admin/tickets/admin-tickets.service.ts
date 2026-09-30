@@ -12,7 +12,6 @@ import {
   User,
 } from 'src/entities';
 import { StorageNamespace } from 'src/storage/storage.constants';
-import { StorageService } from 'src/storage/storage.service';
 import { Repository } from 'typeorm';
 import {
   AdminEditMessageDto,
@@ -29,7 +28,6 @@ export class AdminTicketsService {
     private readonly messageRepo: Repository<SupportTicketMessage>,
     @InjectRepository(FileEntity)
     private readonly fileRepo: Repository<FileEntity>,
-    private readonly storageService: StorageService,
   ) {}
 
   async getStats() {
@@ -257,15 +255,7 @@ export class AdminTicketsService {
     const author = m.author as User | undefined;
     let fileUrl: string | null = null;
     if (file) {
-      try {
-        fileUrl = await this.storageService.getPresignedUrl(
-          file.bucket,
-          file.objectKey,
-          3600,
-        );
-      } catch {
-        fileUrl = `/admin/tickets/${ticketUuid}/files/${file.uuid}`;
-      }
+      fileUrl = `/admin/tickets/${ticketUuid}/files/${file.uuid}`;
     }
     return {
       uuid: m.uuid,

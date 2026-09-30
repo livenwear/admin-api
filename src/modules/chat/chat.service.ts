@@ -57,9 +57,25 @@ export class ChatService {
     private readonly storageService: StorageService,
   ) {}
 
-  mediaPath(fileUuid: string | null | undefined) {
-    if (!fileUuid) return null;
-    return `/public/media/${fileUuid}`;
+  async getFileInConversation(
+    conversationUuid: string,
+    fileUuid: string,
+    customerId?: number,
+  ) {
+    const conv = await this.getConversationByUuid(conversationUuid);
+    if (customerId != null && conv.customerId !== customerId) {
+      throw new ForbiddenException('دسترسی ندارید.');
+    }
+    const hit = await this.messageRepo
+      .createQueryBuilder('m')
+      .innerJoinAndSelect('m.file', 'file')
+      .where('m.conversationId = :cid', { cid: conv.id })
+      .andWhere('file.uuid = :uuid', { uuid: fileUuid })
+      .andWhere('file.namespace = :ns', { ns: StorageNamespace.CHAT })
+      .getOne();
+    const file = hit?.file as FileEntity | undefined;
+    if (!file) throw new NotFoundException('فایل پیدا نشد.');
+    return file;
   }
 
   async getConversationByUuid(uuid: string) {
@@ -344,7 +360,7 @@ export class ChatService {
 
     return {
       success: true,
-      data: slice.map((m) => this.mapMessage(m)),
+      data: slice.map((m) => this.mapMessage(m, opts.conversation.uuid)),
       meta: {
         hasMore,
         nextBefore: slice.length ? slice[0].uuid : null,
@@ -721,12 +737,13 @@ export class ChatService {
     };
   }
 
-  mapMessage(m: ChatMessage) {
+  mapMessage(m: ChatMessage, conversationUuid?: string | null) {
     const sender = m.sender as User | undefined;
     const file = m.file as FileEntity | undefined;
     const reply = m.replyTo as ChatMessage | undefined | null;
     return {
       uuid: m.uuid,
+      conversationUuid: conversationUuid || m.conversation?.uuid || null,
       clientMsgId: m.clientMsgId,
       body: m.body,
       senderRole: m.senderRole,
@@ -754,7 +771,7 @@ export class ChatService {
             uuid: file.uuid,
             originalName: file.originalName,
             mimeType: file.mimeType,
-            imageUrl: this.mediaPath(file.uuid),
+            imageUrl: null,
           }
         : null,
     };

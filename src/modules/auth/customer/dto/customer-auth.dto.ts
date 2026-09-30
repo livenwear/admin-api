@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  MaxLength,
   MinLength,
 } from 'class-validator';
 
@@ -12,12 +13,14 @@ const PHONE_REGEX = /^09\d{9}$/;
 export class CustomerRegisterDto {
   @ApiProperty({ example: '09121234567' })
   @IsString()
-  @Matches(PHONE_REGEX, { message: 'phone must be a valid Iranian mobile' })
+  @Matches(PHONE_REGEX, {
+    message: 'شماره موبایل باید ۱۱ رقم و با ۰۹ شروع شود',
+  })
   phone: string;
 
   @ApiProperty({ minLength: 6 })
   @IsString()
-  @MinLength(6)
+  @MinLength(6, { message: 'رمز عبور حداقل ۶ کاراکتر باشد' })
   password: string;
 
   @ApiPropertyOptional({ example: 'Ali' })
@@ -34,32 +37,40 @@ export class CustomerRegisterDto {
 export class CustomerPasswordLoginDto {
   @ApiProperty({ example: '09121234567' })
   @IsString()
-  @Matches(PHONE_REGEX, { message: 'phone must be a valid Iranian mobile' })
+  @Matches(PHONE_REGEX, {
+    message: 'شماره موبایل باید ۱۱ رقم و با ۰۹ شروع شود',
+  })
   phone: string;
 
   @ApiProperty()
   @IsString()
-  @IsNotEmpty()
-  @MinLength(6)
+  @IsNotEmpty({ message: 'رمز عبور را وارد کنید' })
+  @MinLength(6, { message: 'رمز عبور حداقل ۶ کاراکتر باشد' })
   password: string;
 }
 
 export class CustomerOtpRequestDto {
   @ApiProperty({ example: '09121234567' })
   @IsString()
-  @Matches(PHONE_REGEX, { message: 'phone must be a valid Iranian mobile' })
+  @Matches(PHONE_REGEX, {
+    message: 'شماره موبایل باید ۱۱ رقم و با ۰۹ شروع شود',
+  })
   phone: string;
 }
 
 export class CustomerOtpVerifyDto {
   @ApiProperty({ example: '09121234567' })
   @IsString()
-  @Matches(PHONE_REGEX)
+  @Matches(PHONE_REGEX, {
+    message: 'شماره موبایل باید ۱۱ رقم و با ۰۹ شروع شود',
+  })
   phone: string;
 
   @ApiProperty({ example: '123456' })
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'کد تأیید را وارد کنید' })
+  @Matches(/^\d{6}$/, { message: 'کد تأیید باید ۶ رقم باشد' })
+  @MaxLength(6)
   code: string;
 
   @ApiPropertyOptional({ example: 'Ali' })
@@ -97,24 +108,30 @@ export class CustomerImpersonateExchangeDto {
 export class CustomerForgotPasswordRequestDto {
   @ApiProperty({ example: '09121234567' })
   @IsString()
-  @Matches(PHONE_REGEX, { message: 'phone must be a valid Iranian mobile' })
+  @Matches(PHONE_REGEX, {
+    message: 'شماره موبایل باید ۱۱ رقم و با ۰۹ شروع شود',
+  })
   phone: string;
 }
 
 export class CustomerForgotPasswordResetDto {
   @ApiProperty({ example: '09121234567' })
   @IsString()
-  @Matches(PHONE_REGEX)
+  @Matches(PHONE_REGEX, {
+    message: 'شماره موبایل باید ۱۱ رقم و با ۰۹ شروع شود',
+  })
   phone: string;
 
   @ApiProperty({ example: '123456' })
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'کد تأیید را وارد کنید' })
+  @Matches(/^\d{6}$/, { message: 'کد تأیید باید ۶ رقم باشد' })
+  @MaxLength(6)
   code: string;
 
   @ApiProperty({ minLength: 6 })
   @IsString()
-  @MinLength(6)
+  @MinLength(6, { message: 'رمز عبور حداقل ۶ کاراکتر باشد' })
   password: string;
 }
 

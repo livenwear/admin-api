@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -20,6 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
+import type { Response } from 'express';
 import { assertChatAttachment } from 'src/common/utils/chat-attachment';
 import { ChatSenderRole, RoleSlug, User } from 'src/entities';
 import { CurrentUser } from 'src/modules/auth/shared/current-user.decorator';
@@ -93,6 +95,27 @@ export class AdminChatController {
     );
   }
 
+  @Get('conversations/:uuid/files/:fileUuid')
+  @ApiOperation({ summary: 'Download a chat attachment (admin)' })
+  async downloadFile(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Param('fileUuid', ParseUUIDPipe) fileUuid: string,
+    @Res() res: Response,
+  ) {
+    const file = await this.chatService.getFileInConversation(uuid, fileUuid);
+    const stream = await this.storageService.getObjectStream(
+      file.bucket,
+      file.objectKey,
+    );
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(file.originalName || 'file')}"`,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    stream.pipe(res);
+  }
+
   @Post('conversations/:uuid/messages')
   @ApiOperation({ summary: 'Admin reply (REST — reliable send)' })
   async send(
@@ -163,7 +186,7 @@ export class AdminChatController {
         uuid: row.uuid,
         originalName: row.originalName,
         mimeType: row.mimeType,
-        imageUrl: `/public/media/${row.uuid}`,
+        imageUrl: null,
       },
     };
   }

@@ -29,14 +29,17 @@ export class AddressCreateDto {
 
   @ApiProperty({ example: '12' })
   @IsString()
-  @MinLength(1)
-  @MaxLength(20)
+  @Matches(/^\d{1,5}$/, {
+    message: 'پلاک فقط باید عدد باشد و حداکثر ۵ رقم',
+  })
   plaque: string;
 
   @ApiPropertyOptional({ example: '3' })
   @IsOptional()
   @IsString()
-  @MaxLength(20)
+  @Matches(/^$|^\d{1,4}$/, {
+    message: 'واحد فقط باید عدد باشد و حداکثر ۴ رقم',
+  })
   unit?: string;
 
   @ApiProperty({ example: '1234567890', description: 'کد پستی ۱۰ رقمی' })

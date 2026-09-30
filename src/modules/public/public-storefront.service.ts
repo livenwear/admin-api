@@ -43,7 +43,6 @@ const PUBLIC_MEDIA_NAMESPACES = new Set<string>([
   StorageNamespace.PRODUCTS,
   StorageNamespace.PRODUCT_CATEGORIES,
   StorageNamespace.BRANDS,
-  StorageNamespace.CHAT,
   StorageNamespace.BLOG,
   StorageNamespace.BLOG_CATEGORIES,
   StorageNamespace.BLOG_TAGS,

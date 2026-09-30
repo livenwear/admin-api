@@ -48,7 +48,7 @@ export class OtpService {
   ) {}
 
   private get ttlSeconds(): number {
-    return Number(this.configService.get<string>('OTP_EXPIRES_SECONDS', '120'));
+    return Number(this.configService.get<string>('OTP_EXPIRES_SECONDS', '300'));
   }
 
   private get codeLength(): number {

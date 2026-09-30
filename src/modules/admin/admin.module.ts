@@ -12,6 +12,8 @@ import {
   ImpersonationGrant,
   Inventory,
   Order,
+  OrderItem,
+  OtpDelivery,
   Payment,
   Price,
   Product,
@@ -27,6 +29,9 @@ import {
   PromoCard,
   PromoCardRow,
   Post,
+  Comment,
+  ChatConversation,
+  ChatMessage,
   PostCategory,
   PostCategoryRelation,
   PostProduct,
@@ -36,6 +41,7 @@ import {
   RefreshToken,
   Review,
   Role,
+  Shipment,
   Slider,
   SliderItem,
   StockMovement,
@@ -64,6 +70,7 @@ import { AdminCmsController } from './cms/admin-cms.controller';
 import { AdminCmsService } from './cms/admin-cms.service';
 import { AdminDashboardController } from './dashboard/admin-dashboard.controller';
 import { AdminDashboardService } from './dashboard/admin-dashboard.service';
+import { DashboardSectionsService } from './dashboard/dashboard-sections.service';
 import { AdminInventoryController } from './inventory/admin-inventory.controller';
 import { AdminInventoryService } from './inventory/admin-inventory.service';
 import { AdminMediaController } from './media/admin-media.controller';
@@ -90,6 +97,11 @@ import { CustomerModule } from '../customer/customer.module';
       ImpersonationGrant,
       AuditLog,
       Order,
+      OrderItem,
+      OtpDelivery,
+      Comment,
+      ChatConversation,
+      ChatMessage,
       RefreshToken,
       FileEntity,
       Brand,
@@ -126,6 +138,7 @@ import { CustomerModule } from '../customer/customer.module';
       CartItem,
       Address,
       StockMovement,
+      Shipment,
       Post,
       PostCategory,
       PostTag,
@@ -156,6 +169,7 @@ import { CustomerModule } from '../customer/customer.module';
     AdminAddressesService,
     AdminInventoryService,
     AdminDashboardService,
+    DashboardSectionsService,
     AdminMediaService,
     AdminCatalogService,
     AdminProductsService,

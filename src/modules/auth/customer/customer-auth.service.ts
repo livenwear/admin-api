@@ -116,7 +116,7 @@ export class CustomerAuthService {
     });
 
     if (!user || !user.password) {
-      throw new UnauthorizedException('Invalid credentials.');
+      throw new UnauthorizedException('شماره یا رمز عبور اشتباه است.');
     }
 
     if (!user.isVerified) {
@@ -126,12 +126,12 @@ export class CustomerAuthService {
     }
 
     if (!user.isActive) {
-      throw new ForbiddenException('Account is inactive.');
+      throw new ForbiddenException('این حساب غیرفعال است.');
     }
 
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) {
-      throw new UnauthorizedException('Invalid credentials.');
+      throw new UnauthorizedException('شماره یا رمز عبور اشتباه است.');
     }
 
     this.assertCustomerAudience(user);
@@ -142,7 +142,7 @@ export class CustomerAuthService {
     const tokens = await this.tokenService.issueTokens(user, 'customer', meta);
     return {
       success: true,
-      message: 'Login successful',
+      message: 'ورود انجام شد',
       data: {
         user: this.tokenService.toAuthUser(user),
         ...tokens,
@@ -179,7 +179,7 @@ export class CustomerAuthService {
       isNewUser = true;
     } else if (!existing.isActive && existing.isVerified) {
       // Admin-disabled account
-      throw new ForbiddenException('Account is inactive.');
+      throw new ForbiddenException('این حساب غیرفعال است.');
     } else {
       this.assertCustomerAudience(existing);
       isNewUser = !existing.isVerified;
@@ -214,7 +214,9 @@ export class CustomerAuthService {
       OtpChannel.SMS,
     );
     if (!ok) {
-      throw new BadRequestException('Invalid or expired OTP.');
+      throw new BadRequestException(
+        'کد تأیید اشتباه است یا مهلت آن تمام شده.',
+      );
     }
 
     let user = await this.userRepository.findOne({
@@ -241,7 +243,7 @@ export class CustomerAuthService {
       this.assertCustomerAudience(user);
       // Banned by admin (verified once, then deactivated)
       if (!user.isActive && user.isVerified) {
-        throw new ForbiddenException('Account is inactive.');
+        throw new ForbiddenException('این حساب غیرفعال است.');
       }
       if (dto.firstName?.trim()) user.firstName = dto.firstName.trim();
       if (dto.lastName?.trim()) user.lastName = dto.lastName.trim();
@@ -255,7 +257,7 @@ export class CustomerAuthService {
     const tokens = await this.tokenService.issueTokens(user, 'customer', meta);
     return {
       success: true,
-      message: 'OTP verified',
+      message: 'شماره تأیید شد',
       data: {
         user: this.tokenService.toAuthUser(user),
         ...tokens,
@@ -269,7 +271,7 @@ export class CustomerAuthService {
    * Unknown phones still get a generic success (no enumeration).
    */
   async forgotPasswordRequest(dto: CustomerForgotPasswordRequestDto) {
-    const ttl = Number(process.env.OTP_EXPIRES_SECONDS || 120);
+    const ttl = Number(process.env.OTP_EXPIRES_SECONDS || 300);
     const generic = {
       success: true,
       message:
@@ -320,7 +322,9 @@ export class CustomerAuthService {
       OtpChannel.SMS,
     );
     if (!ok) {
-      throw new BadRequestException('Invalid or expired OTP.');
+      throw new BadRequestException(
+        'کد تأیید اشتباه است یا مهلت آن تمام شده.',
+      );
     }
 
     const user = await this.userRepository.findOne({
@@ -328,7 +332,7 @@ export class CustomerAuthService {
       relations: ['userRoles', 'userRoles.role'],
     });
     if (!user) {
-      throw new NotFoundException('Account not found.');
+      throw new NotFoundException('حسابی با این شماره پیدا نشد.');
     }
 
     user.password = await bcrypt.hash(dto.password, 10);
