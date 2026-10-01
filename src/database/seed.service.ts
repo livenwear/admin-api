@@ -20,7 +20,9 @@ export class SeedService implements OnModuleInit {
   async onModuleInit() {
     await this.ensureRoles();
     await this.ensureSuperAdmin();
-    await this.ensureDemoCustomers();
+    if (this.configService.get<string>('NODE_ENV') !== 'production') {
+      await this.ensureDemoCustomers();
+    }
   }
 
   private async ensureRoles() {

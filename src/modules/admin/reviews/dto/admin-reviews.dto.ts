@@ -49,6 +49,11 @@ export class AdminListReviewsQueryDto {
   @IsUUID()
   productUuid?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  userUuid?: string;
+
   @ApiPropertyOptional({
     enum: ['createdAt', 'updatedAt', 'rating', 'repliedAt'],
   })

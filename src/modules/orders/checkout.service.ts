@@ -37,6 +37,7 @@ import { resolveShippingFee } from './commerce-settings.types';
 import { orderLabels } from './order-labels';
 import { OrderInventoryService } from './order-inventory.service';
 import { PlaceOrderDto } from './dto/place-order.dto';
+import { findBestUserCart } from '../customer/find-user-cart';
 
 function money(n: number) {
   return (Math.round(n * 100) / 100).toFixed(2);
@@ -141,7 +142,7 @@ export class CheckoutService {
 
   async getOptions(user: User) {
     const settings = await this.settingsService.get();
-    const cart = await this.cartRepo.findOne({ where: { userId: user.id } });
+    const cart = await findBestUserCart(this.cartRepo, user.id);
     if (!cart) {
       return {
         success: true,
@@ -371,7 +372,7 @@ export class CheckoutService {
       throw new BadRequestException('روش ارسال انتخاب‌شده فعال نیست.');
     }
 
-    const cart = await this.cartRepo.findOne({ where: { userId: user.id } });
+    const cart = await findBestUserCart(this.cartRepo, user.id);
     if (!cart) throw new BadRequestException('سبد خرید خالی است.');
 
     const snapshot = await this.buildCartSnapshot(cart.id);

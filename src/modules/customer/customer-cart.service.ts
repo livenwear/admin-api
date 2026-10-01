@@ -20,6 +20,7 @@ import {
 import { ProductStatus } from 'src/entities/enums';
 import { In, IsNull, Repository } from 'typeorm';
 import { CartAddDto, CartSetQtyDto } from './dto/cart.dto';
+import { findBestUserCart } from './find-user-cart';
 
 const GUEST_TOKEN_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -53,9 +54,41 @@ export class CustomerCartService {
     return token.trim();
   }
 
+  /** Fold extra carts for the same user into the one that actually has items. */
+  private async absorbSiblingCarts(userId: number, primary: Cart) {
+    const siblings = await this.cartRepo.find({ where: { userId } });
+    const extras = siblings.filter((c) => c.id !== primary.id);
+    if (!extras.length) return;
+
+    for (const extra of extras) {
+      const extraItems = await this.itemRepo.find({
+        where: { cartId: extra.id },
+      });
+      for (const gi of extraItems) {
+        const existing = await this.itemRepo.findOne({
+          where: { cartId: primary.id, variantId: gi.variantId },
+        });
+        if (existing) {
+          existing.quantity = Math.min(99, existing.quantity + gi.quantity);
+          await this.itemRepo.save(existing);
+        } else {
+          await this.itemRepo.save(
+            this.itemRepo.create({
+              cartId: primary.id,
+              variantId: gi.variantId,
+              quantity: gi.quantity,
+            }),
+          );
+        }
+      }
+      await this.itemRepo.delete({ cartId: extra.id });
+      await this.cartRepo.softRemove(extra);
+    }
+  }
+
   private async getOrCreateCart(user: User | null, guestToken?: string | null) {
     if (user) {
-      let cart = await this.cartRepo.findOne({ where: { userId: user.id } });
+      let cart = await findBestUserCart(this.cartRepo, user.id);
       if (!cart) {
         cart = await this.cartRepo.save(
           this.cartRepo.create({
@@ -63,6 +96,8 @@ export class CustomerCartService {
             guestToken: null,
           }),
         );
+      } else {
+        await this.absorbSiblingCarts(user.id, cart);
       }
       return cart;
     }

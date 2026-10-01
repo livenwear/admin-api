@@ -23,7 +23,7 @@ import { MylogController } from './mylog.controller';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: process.env.LIVEN_ENV_FILE || '.env',
     }),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],

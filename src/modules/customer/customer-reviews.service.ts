@@ -101,7 +101,7 @@ export class CustomerReviewsService {
       rating: dto.rating,
       title: dto.title?.trim() || null,
       body: dto.body.trim(),
-      isApproved: true,
+      isApproved: false,
     });
     const saved = await this.reviewRepo.save(review);
     await this.refreshProductRating(product.id);

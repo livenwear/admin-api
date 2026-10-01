@@ -71,6 +71,12 @@ export class AdminReviewsService {
       });
     }
 
+    if (query.userUuid) {
+      qb.andWhere('user.uuid = :userUuid', {
+        userUuid: query.userUuid,
+      });
+    }
+
     qb.orderBy(`r.${sortBy}`, sortOrder);
 
     const total = await qb.clone().getCount();
@@ -254,6 +260,7 @@ export class AdminReviewsService {
       product: product
         ? {
             uuid: product.uuid,
+            publicId: product.publicId,
             name: product.name,
             slug: product.slug,
           }
