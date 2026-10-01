@@ -18,6 +18,7 @@ import {
 import { ProductStatus } from 'src/entities/enums';
 import { In, IsNull, Repository } from 'typeorm';
 import { WishlistAddDto, WishlistToggleDto } from './dto/wishlist.dto';
+import { mapVariantDisplayAttrs } from './map-variant-attrs';
 
 @Injectable()
 export class CustomerWishlistService {
@@ -217,6 +218,7 @@ export class CustomerWishlistService {
             uuid: (item.variant as ProductVariant).uuid,
             title: (item.variant as ProductVariant).title,
             sku: (item.variant as ProductVariant).sku,
+            attributes: mapVariantDisplayAttrs(item.variant as any),
           }
         : null,
     };
@@ -321,6 +323,9 @@ export class CustomerWishlistService {
       .leftJoinAndSelect('product.productCategories', 'pc')
       .leftJoinAndSelect('pc.category', 'category')
       .leftJoinAndSelect('item.variant', 'variant')
+      .leftJoinAndSelect('variant.variantAttributeValues', 'itemVav')
+      .leftJoinAndSelect('itemVav.attributeValue', 'itemAv')
+      .leftJoinAndSelect('itemAv.attribute', 'itemAttr')
       .where('item.wishlistId = :wid', { wid: wishlist.id })
       .andWhere('product.status = :status', { status: ProductStatus.ACTIVE })
       .orderBy('item.createdAt', 'DESC')
@@ -351,6 +356,10 @@ export class CustomerWishlistService {
       .leftJoinAndSelect('images.file', 'file')
       .leftJoinAndSelect('product.variants', 'variants')
       .leftJoinAndSelect('variants.prices', 'prices')
+      .leftJoinAndSelect('item.variant', 'chosen')
+      .leftJoinAndSelect('chosen.variantAttributeValues', 'cvav')
+      .leftJoinAndSelect('cvav.attributeValue', 'cav')
+      .leftJoinAndSelect('cav.attribute', 'cattr')
       .where('item.wishlistId = :wid', { wid: wishlist.id })
       .andWhere('product.status = :status', { status: ProductStatus.ACTIVE })
       .orderBy('item.createdAt', 'DESC')
@@ -363,9 +372,17 @@ export class CustomerWishlistService {
     const preview = items.slice(0, 3).map((item) => {
       const product = item.product as Product;
       const card = this.mapProductCard(product);
+      const variant = item.variant as ProductVariant | undefined;
       return {
         createdAt: item.createdAt,
         product: card,
+        variant: variant
+          ? {
+              uuid: variant.uuid,
+              title: variant.title,
+              attributes: mapVariantDisplayAttrs(variant as any),
+            }
+          : null,
       };
     });
 
@@ -432,15 +449,17 @@ export class CustomerWishlistService {
   async toggle(user: User, dto: WishlistToggleDto) {
     const wishlist = await this.getOrCreateWishlist(user);
     const product = await this.resolveProduct(dto.productUuid);
-    const variantId = await this.resolveVariant(product.id, dto.variantUuid);
 
-    const existing = await this.findItem(wishlist.id, product.id, variantId);
+    const existing = await this.itemRepo.find({
+      where: { wishlistId: wishlist.id, productId: product.id },
+    });
     let inWishlist: boolean;
 
-    if (existing) {
+    if (existing.length) {
       await this.itemRepo.remove(existing);
       inWishlist = false;
     } else {
+      const variantId = await this.resolveVariant(product.id, dto.variantUuid);
       await this.itemRepo.save(
         this.itemRepo.create({
           wishlistId: wishlist.id,
@@ -480,6 +499,9 @@ export class CustomerWishlistService {
       .leftJoinAndSelect('product.variants', 'variants')
       .leftJoinAndSelect('variants.prices', 'prices')
       .leftJoinAndSelect('item.variant', 'variant')
+      .leftJoinAndSelect('variant.variantAttributeValues', 'itemVav')
+      .leftJoinAndSelect('itemVav.attributeValue', 'itemAv')
+      .leftJoinAndSelect('itemAv.attribute', 'itemAttr')
       .where('item.wishlistId = :wid', { wid: wishlist.id })
       .orderBy('item.createdAt', 'DESC')
       .getMany();

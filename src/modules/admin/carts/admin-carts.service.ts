@@ -4,6 +4,10 @@ import { pickEffectivePrice, priceAmounts } from 'src/common/pricing/effective-p
 import { Cart, CartItem, Order, ProductVariant, User } from 'src/entities';
 import { PaymentStatus, ProductStatus } from 'src/entities/enums';
 import { In, Repository } from 'typeorm';
+import {
+  mapVariantDisplayAttrs,
+  variantListColorLabel,
+} from 'src/modules/customer/map-variant-attrs';
 
 type PurchaseStatus = 'in_cart' | 'empty' | 'purchased';
 
@@ -63,6 +67,9 @@ export class AdminCartsService {
         .innerJoinAndSelect('item.variant', 'variant')
         .innerJoinAndSelect('variant.product', 'product')
         .leftJoinAndSelect('variant.prices', 'prices')
+        .leftJoinAndSelect('variant.variantAttributeValues', 'vav')
+        .leftJoinAndSelect('vav.attributeValue', 'av')
+        .leftJoinAndSelect('av.attribute', 'attr')
         .where('item.cartId IN (:...ids)', { ids: cartIds })
         .andWhere('product.status = :status', { status: ProductStatus.ACTIVE })
         .orderBy('item.createdAt', 'DESC')
@@ -126,11 +133,13 @@ export class AdminCartsService {
         const prices = (variant as any).prices || [];
         const active = pickEffectivePrice(prices);
         const amounts = priceAmounts(active);
+        const attributes = mapVariantDisplayAttrs(variant);
         return {
           quantity: item.quantity,
           productName: product?.name || '—',
           productUuid: product?.uuid || null,
           variantTitle: variant?.title || null,
+          variantLabel: variantListColorLabel(attributes, variant?.title) || null,
           unitPrice: amounts.amount ?? 0,
         };
       });

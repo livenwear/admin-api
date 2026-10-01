@@ -21,6 +21,7 @@ import { ProductStatus } from 'src/entities/enums';
 import { In, IsNull, Repository } from 'typeorm';
 import { CartAddDto, CartSetQtyDto } from './dto/cart.dto';
 import { findBestUserCart } from './find-user-cart';
+import { mapVariantDisplayAttrs } from './map-variant-attrs';
 
 const GUEST_TOKEN_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -229,22 +230,7 @@ export class CustomerCartService {
     const savings =
       lineCompare != null ? Math.max(0, lineCompare - lineTotal) : 0;
 
-    const attrs: Array<{
-      name: string;
-      slug: string;
-      value: string;
-      colorCode: string | null;
-    }> = [];
-    for (const vav of (variant as any).variantAttributeValues || []) {
-      const av = vav.attributeValue;
-      if (!av) continue;
-      attrs.push({
-        name: av.attribute?.name || '',
-        slug: av.attribute?.slug || '',
-        value: String(av.value || ''),
-        colorCode: av.colorCode || null,
-      });
-    }
+    const attrs = mapVariantDisplayAttrs(variant as any);
 
     return {
       id: item.id,

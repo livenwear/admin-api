@@ -38,6 +38,7 @@ import { orderLabels } from './order-labels';
 import { OrderInventoryService } from './order-inventory.service';
 import { PlaceOrderDto } from './dto/place-order.dto';
 import { findBestUserCart } from '../customer/find-user-cart';
+import { mapVariantDisplayAttrs } from '../customer/map-variant-attrs';
 
 function money(n: number) {
   return (Math.round(n * 100) / 100).toFixed(2);
@@ -260,10 +261,7 @@ export class CheckoutService {
       const available = inv
         ? Math.max(0, inv.quantity - inv.reservedQuantity)
         : 0;
-      const attrs = (variant.variantAttributeValues || []).map((vav: any) => ({
-        name: vav.attributeValue?.attribute?.name,
-        value: vav.attributeValue?.value,
-      }));
+      const attrs = mapVariantDisplayAttrs(variant);
 
       return {
         variantId: variant.id,
@@ -271,6 +269,7 @@ export class CheckoutService {
         productId: product.id,
         productUuid: product.uuid,
         productName: product.name,
+        variantTitle: variant.title,
         sku: variant.sku,
         quantity: item.quantity,
         unitPrice,
@@ -292,6 +291,7 @@ export class CheckoutService {
         variantUuid: l.variantUuid,
         productUuid: l.productUuid,
         productName: l.productName,
+        variantTitle: l.variantTitle,
         sku: l.sku,
         quantity: l.quantity,
         unitPrice: l.unitPrice,
@@ -435,7 +435,10 @@ export class CheckoutService {
             quantity: line.quantity,
             unitPrice: money(line.unitPrice),
             totalPrice: money(line.lineTotal),
-            attributesSnapshot: { attributes: line.attributes },
+            attributesSnapshot: {
+              attributes: line.attributes,
+              variantTitle: line.variantTitle,
+            },
           }),
         );
       }
